@@ -11,4 +11,5 @@
 #![cfg_attr(feature = "dox", feature(doc_cfg))]
 
 /// Extension APIs for Command
+#[cfg(not(windows))]
 pub mod cmdext;
