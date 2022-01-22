@@ -1,5 +1,6 @@
 use anyhow::Result;
 use cap_std_ext::cmdext::CapStdExtCommandExt;
+use cap_std_ext::dirext::CapStdExtDirExt;
 use rustix::fd::FromFd;
 use std::io::Write;
 use std::{process::Command, sync::Arc};
@@ -19,5 +20,14 @@ fn take_fd() -> Result<()> {
     let s = c.output()?;
     assert!(s.status.success());
     assert_eq!(s.stdout.as_slice(), b"11\n");
+    Ok(())
+}
+
+#[test]
+fn open_file_optional() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    assert!(td.open_optional("bar")?.is_none());
+    td.write("bar", "testcontents")?;
+    assert_eq!(td.read("bar")?.as_slice(), b"testcontents");
     Ok(())
 }

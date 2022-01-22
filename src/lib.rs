@@ -8,3 +8,4 @@
 
 #[cfg(not(windows))]
 pub mod cmdext;
+pub mod dirext;
