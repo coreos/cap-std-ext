@@ -1,9 +1,11 @@
+//! Extensions for [`std::process::Command`].
+
 use rustix::fd::{FromRawFd, IntoRawFd};
 use rustix::io::OwnedFd;
 use std::os::unix::process::CommandExt;
 use std::sync::Arc;
 
-/// Extension trait for [`std::process::Command`] that uses `cap-std`.
+/// Extension trait for [`std::process::Command`].
 pub trait CapStdExtCommandExt {
     /// Pass a file descriptor into the target process.
     fn take_fd_n(&mut self, fd: Arc<OwnedFd>, target: i32) -> &mut Self;
