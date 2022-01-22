@@ -8,5 +8,11 @@ readme = "README.md"
 repository = "https://github.com/cgwalters/cap-std-ext"
 version = "0.1.0"
 
+[dependencies]
+cap-std = "0.22"
+
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "0.31.0", features = ["procfs"] }
+
+[dev-dependencies]
+anyhow = "1.0"
