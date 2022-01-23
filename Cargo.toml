@@ -12,7 +12,7 @@ version = "0.1.1"
 cap-std = "0.23"
 
 [target.'cfg(not(windows))'.dependencies]
-rustix = { version = "0.31.0", features = ["procfs"] }
+rustix = { version = "0.32.0", features = ["procfs"] }
 
 [dev-dependencies]
 anyhow = "1.0"
