@@ -24,13 +24,15 @@ fn take_fd() -> Result<()> {
 }
 
 #[test]
-fn open_optional() -> Result<()> {
+fn optionals() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
 
     // file
     assert!(td.open_optional("bar")?.is_none());
+    assert_eq!(td.remove_file_optional("bar")?, false);
     td.write("bar", "testcontents")?;
     assert_eq!(td.read("bar")?.as_slice(), b"testcontents");
+    assert_eq!(td.remove_file_optional("bar")?, true);
 
     // directory
     assert!(td.open_dir_optional("somedir")?.is_none());

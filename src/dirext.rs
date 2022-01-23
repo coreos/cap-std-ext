@@ -13,6 +13,9 @@ pub trait CapStdExtDirExt {
 
     /// Open a directory, but return `Ok(None)` if it does not exist.
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>>;
+
+    /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
+    fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 }
 
 fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
@@ -35,5 +38,13 @@ impl CapStdExtDirExt for Dir {
 
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>> {
         map_optional(self.open_dir(path.as_ref()))
+    }
+
+    fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool> {
+        match self.remove_file(path.as_ref()) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 }
