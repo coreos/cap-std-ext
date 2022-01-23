@@ -10,6 +10,8 @@ version = "0.1.1"
 
 [dependencies]
 cap-std = "0.23"
+# This matches what cap-std uses
+uuid = { version = "0.8.1", features = ["v4"] }
 
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "0.32.0", features = ["procfs"] }
@@ -17,3 +19,6 @@ rustix = { version = "0.32.0", features = ["procfs"] }
 [dev-dependencies]
 anyhow = "1.0"
 cap-tempfile = "0.23"
+
+[patch.crates-io]
+rustix = { git = "https://github.com/cgwalters/rustix", branch = "proc-as-nonroot" }

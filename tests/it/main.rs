@@ -3,6 +3,8 @@ use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
 use rustix::fd::FromFd;
 use std::io::Write;
+use std::os::unix::prelude::PermissionsExt;
+use std::path::Path;
 use std::{process::Command, sync::Arc};
 
 #[test]
@@ -38,5 +40,23 @@ fn optionals() -> Result<()> {
     assert!(td.open_dir_optional("somedir")?.is_none());
     td.create_dir("somedir")?;
     assert!(td.open_dir_optional("somedir")?.is_some());
+    Ok(())
+}
+
+#[test]
+fn link_tempfile() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    let p = Path::new("foo");
+    let mut f = td.new_linkable_file(p).unwrap();
+    assert!(td.metadata_optional(p).unwrap().is_none());
+    writeln!(f, "hello world").unwrap();
+    drop(f);
+    // Verify we didn't write the file
+    assert!(td.metadata_optional(p)?.is_none());
+
+    let mut f = td.new_linkable_file(p).unwrap();
+    writeln!(f, "hello world").unwrap();
+    f.emplace().unwrap();
+    assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
     Ok(())
 }

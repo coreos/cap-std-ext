@@ -12,6 +12,8 @@ pub use cap_std;
 #[cfg(not(windows))]
 pub mod cmdext;
 pub mod dirext;
+#[cfg(any(target_os = "android", target_os = "linux"))]
+pub mod tempfile;
 
 /// Prelude, intended for glob import.
 pub mod prelude {
