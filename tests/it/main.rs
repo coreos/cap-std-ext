@@ -1,4 +1,5 @@
 use anyhow::Result;
+use cap_std::fs::Permissions;
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
 use rustix::fd::FromFd;
@@ -54,9 +55,32 @@ fn link_tempfile() -> Result<()> {
     // Verify we didn't write the file
     assert!(td.metadata_optional(p)?.is_none());
 
+    // Do a write
     let mut f = td.new_linkable_file(p).unwrap();
     writeln!(f, "hello world").unwrap();
     f.emplace().unwrap();
     assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
+
+    // Fail to emplace to existing
+    let mut f = td.new_linkable_file(p).unwrap();
+    writeln!(f, "second hello world").unwrap();
+    assert_eq!(f.emplace().err().unwrap().kind(), std::io::ErrorKind::AlreadyExists);
+
+    // Replace it
+    let mut f = td.new_linkable_file(p).unwrap();
+    writeln!(f, "second hello world").unwrap();
+    f.replace().unwrap();
+    assert_eq!(td.read_to_string(p).unwrap().as_str(), "second hello world\n");
+    // Should still be 0600
+    assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
+
+    // Change the current permissions, then replace and ensure they're preserved
+    td.set_permissions(p, Permissions::from_mode(0o750))?;
+    let mut f = td.new_linkable_file(p).unwrap();
+    writeln!(f, "third hello world").unwrap();
+    f.replace().unwrap();
+    assert_eq!(td.read_to_string(p).unwrap().as_str(), "third hello world\n");
+    assert_eq!(td.metadata(p)?.permissions().mode(), 0o750);
+
     Ok(())
 }
