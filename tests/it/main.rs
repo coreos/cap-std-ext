@@ -136,5 +136,13 @@ fn link_tempfile_with() -> Result<()> {
         "atomic replacement 2\n"
     );
 
+    td.replace_contents_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
+        .unwrap();
+    assert_eq!(
+        td.read_to_string(p).unwrap().as_str(),
+        "atomic replacement 3\n"
+    );
+    assert_eq!(td.metadata(p)?.permissions().mode(), 0o700);
+
     Ok(())
 }

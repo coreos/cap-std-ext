@@ -9,7 +9,7 @@ use rustix::fd::{AsFd, FromFd};
 use rustix::fs::{AtFlags, Mode, OFlags};
 use rustix::path::DecInt;
 use std::ffi::OsStr;
-use std::io::Result;
+use std::io::{Result, Write};
 use std::ops::{Deref, DerefMut};
 use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
@@ -147,18 +147,40 @@ impl<'p, 'd> LinkableTempfile<'p, 'd> {
         }
     }
 
+    /// Write the given contents to the file to its destination with the chosen permissions.
+    pub fn replace_contents_using_perms(
+        mut self,
+        contents: impl AsRef<[u8]>,
+        permissions: Permissions,
+    ) -> Result<()> {
+        self.write_all(contents.as_ref())?;
+        self.replace_with_perms(permissions)
+    }
+
+    /// Write the given contents to the file to its destination with the chosen permissions.
+    pub fn replace_contents(mut self, contents: impl AsRef<[u8]>) -> Result<()> {
+        self.write_all(contents.as_ref())?;
+        let permissions = self.default_permissions()?;
+        self.replace_with_perms(permissions)
+    }
+
     /// Write the file to its destination.
     ///
     /// If a file exists at the destination already, and no override permissions are set, the permissions
     /// will be set to match the destination. Otherwise, a conservative default of `0o600` i.e. `rw-------`
     /// will be used.
     pub fn replace(self) -> Result<()> {
+        let permissions = self.default_permissions()?;
+        self.replace_with_perms(permissions)
+    }
+
+    fn default_permissions(&self) -> Result<Permissions> {
         let permissions = if let Some(p) = self.subdir().metadata_optional(self.name)? {
             p.permissions()
         } else {
             Permissions::from_mode(0o600)
         };
-        self.replace_with_perms(permissions)
+        Ok(permissions)
     }
 
     /// Write the file to its destination, erroring out if there is an extant file.

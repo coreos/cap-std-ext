@@ -55,6 +55,17 @@ pub trait CapStdExtDirExt {
     where
         F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
+
+    /// Atomically write a file contents using specified permissions, replacing an existing one (if present).
+    ///
+    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn replace_contents_with_perms(
+        &self,
+        destname: impl AsRef<Path>,
+        contents: impl AsRef<[u8]>,
+        perms: cap_std::fs::Permissions,
+    ) -> Result<()>;
 }
 
 fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
@@ -142,5 +153,15 @@ impl CapStdExtDirExt for Dir {
                 .map_err(From::from),
             Err(e) => Err(e.into()),
         }
+    }
+
+    fn replace_contents_with_perms(
+        &self,
+        destname: impl AsRef<Path>,
+        contents: impl AsRef<[u8]>,
+        perms: cap_std::fs::Permissions,
+    ) -> Result<()> {
+        let t = self.new_linkable_file(destname.as_ref())?;
+        t.replace_contents_using_perms(contents, perms)
     }
 }
