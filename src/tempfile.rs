@@ -75,7 +75,7 @@ impl<'p, 'd> LinkableTempfile<'p, 'd> {
         } else {
             None
         };
-        let subdir_fd = subdir.as_ref().unwrap_or(&dir).as_fd();
+        let subdir_fd = subdir.as_ref().unwrap_or(dir).as_fd();
         // openat's API uses WRONLY.  There may be use cases for reading too, so let's support it.
         let oflags = OFlags::CLOEXEC | OFlags::TMPFILE | OFlags::RDWR;
         let mode = Mode::RUSR | Mode::WUSR;
@@ -90,7 +90,7 @@ impl<'p, 'd> LinkableTempfile<'p, 'd> {
     }
 
     fn subdir(&self) -> &Dir {
-        self.subdir.as_ref().unwrap_or(&self.dir)
+        self.subdir.as_ref().unwrap_or(self.dir)
     }
 
     fn try_emplace_to(dir: &Dir, fdname: &DecInt, name: &OsStr) -> rustix::io::Result<()> {

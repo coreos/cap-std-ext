@@ -122,15 +122,11 @@ impl CapStdExtDirExt for Dir {
     {
         let t = self.new_linkable_file(destname.as_ref())?;
         let mut bufw = std::io::BufWriter::new(t);
-        match f(&mut bufw) {
-            Ok(r) => bufw
-                .into_inner()
-                .map_err(From::from)
-                .and_then(|t| t.replace())
-                .map(|()| r)
-                .map_err(From::from),
-            Err(e) => Err(e.into()),
-        }
+        let r = f(&mut bufw)?;
+        bufw.into_inner()
+            .map_err(From::from)
+            .and_then(|t| t.replace())?;
+        Ok(r)
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -146,15 +142,11 @@ impl CapStdExtDirExt for Dir {
     {
         let t = self.new_linkable_file(destname.as_ref())?;
         let mut bufw = std::io::BufWriter::new(t);
-        match f(&mut bufw) {
-            Ok(r) => bufw
-                .into_inner()
-                .map_err(From::from)
-                .and_then(|t| t.replace_with_perms(perms))
-                .map(|()| r)
-                .map_err(From::from),
-            Err(e) => Err(e.into()),
-        }
+        let r = f(&mut bufw)?;
+        bufw.into_inner()
+            .map_err(From::from)
+            .and_then(|t| t.replace_with_perms(perms))?;
+        Ok(r)
     }
 
     fn replace_contents_with_perms(
