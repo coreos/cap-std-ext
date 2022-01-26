@@ -144,5 +144,14 @@ fn link_tempfile_with() -> Result<()> {
     );
     assert_eq!(td.metadata(p)?.permissions().mode(), 0o700);
 
+    // Verify we correctly pass through anyhow::Error too
+    let r = td
+        .replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
+            writeln!(f, "atomic replacement 2")?;
+            Ok::<_, anyhow::Error>(42u32)
+        })
+        .unwrap();
+    assert_eq!(r, 42);
+
     Ok(())
 }

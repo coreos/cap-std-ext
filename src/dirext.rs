@@ -37,7 +37,7 @@ pub trait CapStdExtDirExt {
         &self,
         destname: impl AsRef<Path>,
         f: F,
-    ) -> std::result::Result<(), E>
+    ) -> std::result::Result<T, E>
     where
         F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
@@ -51,7 +51,7 @@ pub trait CapStdExtDirExt {
         destname: impl AsRef<Path>,
         perms: cap_std::fs::Permissions,
         f: F,
-    ) -> std::result::Result<(), E>
+    ) -> std::result::Result<T, E>
     where
         F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
@@ -115,7 +115,7 @@ impl CapStdExtDirExt for Dir {
         &self,
         destname: impl AsRef<Path>,
         f: F,
-    ) -> std::result::Result<(), E>
+    ) -> std::result::Result<T, E>
     where
         F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>,
@@ -123,10 +123,11 @@ impl CapStdExtDirExt for Dir {
         let t = self.new_linkable_file(destname.as_ref())?;
         let mut bufw = std::io::BufWriter::new(t);
         match f(&mut bufw) {
-            Ok(_) => bufw
+            Ok(r) => bufw
                 .into_inner()
                 .map_err(From::from)
                 .and_then(|t| t.replace())
+                .map(|()| r)
                 .map_err(From::from),
             Err(e) => Err(e.into()),
         }
@@ -138,7 +139,7 @@ impl CapStdExtDirExt for Dir {
         destname: impl AsRef<Path>,
         perms: cap_std::fs::Permissions,
         f: F,
-    ) -> std::result::Result<(), E>
+    ) -> std::result::Result<T, E>
     where
         F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>,
@@ -146,10 +147,11 @@ impl CapStdExtDirExt for Dir {
         let t = self.new_linkable_file(destname.as_ref())?;
         let mut bufw = std::io::BufWriter::new(t);
         match f(&mut bufw) {
-            Ok(_) => bufw
+            Ok(r) => bufw
                 .into_inner()
                 .map_err(From::from)
                 .and_then(|t| t.replace_with_perms(perms))
+                .map(|()| r)
                 .map_err(From::from),
             Err(e) => Err(e.into()),
         }
