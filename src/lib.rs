@@ -8,6 +8,8 @@
 
 // Re-export our dependencies
 pub use cap_std;
+#[cfg(not(windows))]
+pub use rustix;
 
 #[cfg(not(windows))]
 pub mod cmdext;
