@@ -49,6 +49,16 @@ impl<'p, 'd> Deref for LinkableTempfile<'p, 'd> {
     }
 }
 
+impl<'p, 'd> std::io::Write for LinkableTempfile<'p, 'd> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        self.fd.write(buf)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        self.fd.flush()
+    }
+}
+
 impl<'p, 'd> DerefMut for LinkableTempfile<'p, 'd> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.fd
