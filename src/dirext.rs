@@ -4,6 +4,7 @@
 
 use crate::tempfile::LinkableTempfile;
 use cap_std::fs::{Dir, File, Metadata};
+use std::io;
 use std::io::Result;
 use std::path::Path;
 
@@ -14,6 +15,15 @@ pub trait CapStdExtDirExt {
 
     /// Open a directory, but return `Ok(None)` if it does not exist.
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>>;
+
+    /// Create the target directory, but do nothing if a directory already exists at that path.
+    /// The return value will be `true` if the directory was created.  An error will be
+    /// returned if the path is a non-directory.  Symbolic links will be followed.
+    fn ensure_dir_with(
+        &self,
+        p: impl AsRef<Path>,
+        builder: &cap_std::fs::DirBuilder,
+    ) -> Result<bool>;
 
     /// Gather metadata, but return `Ok(None)` if it does not exist.
     fn metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>>;
@@ -88,6 +98,26 @@ impl CapStdExtDirExt for Dir {
 
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>> {
         map_optional(self.open_dir(path.as_ref()))
+    }
+
+    fn ensure_dir_with(
+        &self,
+        p: impl AsRef<Path>,
+        builder: &cap_std::fs::DirBuilder,
+    ) -> Result<bool> {
+        let p = p.as_ref();
+        match self.create_dir_with(p, builder) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                if !self.symlink_metadata(p)?.is_dir() {
+                    // TODO use https://doc.rust-lang.org/std/io/enum.ErrorKind.html#variant.NotADirectory
+                    // once it's stable.
+                    return Err(io::Error::new(io::ErrorKind::Other, "Found non-directory"));
+                }
+                Ok(false)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     fn metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>> {
