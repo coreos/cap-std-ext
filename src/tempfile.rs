@@ -136,15 +136,12 @@ impl<'p, 'd> LinkableTempfile<'p, 'd> {
         // We could avoid the error here if we infallibly constructed the uuid as CString.
         let tempname = rustix::ffi::ZString::new(tempname)?;
         // TODO: panic-safe cleanup of the tempfile.  But I think the only case where we could panic is OOM
-        match rustix::fs::renameat(subdir, &tempname, subdir, self.name) {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                // Clean up our temporary file, but ignore errors doing so because
-                // the real error was probably from the rename(), and we don't want to mask it.
-                let _ = rustix::fs::unlinkat(subdir, tempname, AtFlags::empty());
-                Err(e.into())
-            }
-        }
+        rustix::fs::renameat(subdir, &tempname, subdir, self.name).map_err(|e| {
+            // Clean up our temporary file, but ignore errors doing so because
+            // the real error was probably from the rename(), and we don't want to mask it.
+            let _ = rustix::fs::unlinkat(subdir, tempname, AtFlags::empty());
+            e.into()
+        })
     }
 
     /// Write the given contents to the file to its destination with the chosen permissions.
