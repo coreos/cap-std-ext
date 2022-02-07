@@ -27,6 +27,22 @@ fn take_fd() -> Result<()> {
 }
 
 #[test]
+fn fchdir() -> Result<()> {
+    let td = Arc::new(cap_tempfile::tempdir(cap_std::ambient_authority())?);
+    let contents = b"hello world";
+    td.write("somefile", contents)?;
+    let mut c = Command::new("/usr/bin/cat");
+    c.arg("somefile");
+    c.cwd_dir(Arc::clone(&td));
+    let st = c.output()?;
+    if !st.status.success() {
+        anyhow::bail!("Failed to exec cat");
+    }
+    assert_eq!(st.stdout.as_slice(), contents);
+    Ok(())
+}
+
+#[test]
 fn optionals() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
 
