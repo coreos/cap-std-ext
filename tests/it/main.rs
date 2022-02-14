@@ -28,17 +28,37 @@ fn take_fd() -> Result<()> {
 
 #[test]
 fn fchdir() -> Result<()> {
-    let td = Arc::new(cap_tempfile::tempdir(cap_std::ambient_authority())?);
-    let contents = b"hello world";
-    td.write("somefile", contents)?;
-    let mut c = Command::new("/usr/bin/cat");
-    c.arg("somefile");
-    c.cwd_dir(Arc::clone(&td));
-    let st = c.output()?;
-    if !st.status.success() {
-        anyhow::bail!("Failed to exec cat");
+    static CONTENTS: &[u8] = b"hello world";
+
+    fn new_cmd() -> Command {
+        let mut c = Command::new("/usr/bin/cat");
+        c.arg("somefile");
+        c
     }
-    assert_eq!(st.stdout.as_slice(), contents);
+
+    fn test_cmd(mut c: Command) -> Result<()> {
+        let st = c.output()?;
+        if !st.status.success() {
+            anyhow::bail!("Failed to exec cat");
+        }
+        assert_eq!(st.stdout.as_slice(), CONTENTS);
+        Ok(())
+    }
+
+    let td = Arc::new(cap_tempfile::tempdir(cap_std::ambient_authority())?);
+
+    td.write("somefile", CONTENTS)?;
+
+    let mut c = new_cmd();
+    // Test this deprecated path
+    c.cwd_dir(Arc::clone(&td));
+    test_cmd(c).unwrap();
+
+    let mut c = new_cmd();
+    let subdir = td.open_dir(".")?;
+    c.cwd_dir_owned(subdir.try_clone()?);
+    test_cmd(c).unwrap();
+
     Ok(())
 }
 
