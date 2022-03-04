@@ -28,6 +28,9 @@ pub trait CapStdExtDirExt {
     /// Gather metadata, but return `Ok(None)` if it does not exist.
     fn metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>>;
 
+    /// Gather metadata (but do not follow symlinks), but return `Ok(None)` if it does not exist.
+    fn symlink_metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>>;
+
     /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
@@ -122,6 +125,10 @@ impl CapStdExtDirExt for Dir {
 
     fn metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>> {
         map_optional(self.metadata(path.as_ref()))
+    }
+
+    fn symlink_metadata_optional(&self, path: impl AsRef<Path>) -> Result<Option<Metadata>> {
+        map_optional(self.symlink_metadata(path.as_ref()))
     }
 
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool> {

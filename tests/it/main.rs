@@ -68,8 +68,11 @@ fn optionals() -> Result<()> {
 
     // file
     assert!(td.open_optional("bar")?.is_none());
+    assert!(td.metadata_optional("bar").unwrap().is_none());
     assert_eq!(td.remove_file_optional("bar")?, false);
     td.write("bar", "testcontents")?;
+    assert!(td.metadata_optional("bar").unwrap().is_some());
+    assert!(td.symlink_metadata_optional("bar").unwrap().is_some());
     assert_eq!(td.read("bar")?.as_slice(), b"testcontents");
     assert_eq!(td.remove_file_optional("bar")?, true);
 
@@ -87,8 +90,10 @@ fn ensuredir() -> Result<()> {
     let p = Path::new("somedir");
     let b = &cap_std::fs::DirBuilder::new();
     assert!(td.metadata_optional(p)?.is_none());
+    assert!(td.symlink_metadata_optional(p)?.is_none());
     assert!(td.ensure_dir_with(p, b).unwrap());
     assert!(td.metadata_optional(p)?.is_some());
+    assert!(td.symlink_metadata_optional(p)?.is_some());
     assert_eq!(td.ensure_dir_with(p, b).unwrap(), false);
 
     let p = Path::new("somedir/without/existing-parent");
@@ -107,10 +112,17 @@ fn ensuredir() -> Result<()> {
     // Broken symlinks aren't followed and are errors
     let p = Path::new("linksrc");
     td.symlink("linkdest", p)?;
+    assert!(td.metadata(p).is_err());
+    assert!(td
+        .symlink_metadata_optional(p)
+        .unwrap()
+        .unwrap()
+        .is_symlink());
     // Non-broken symlinks are also an error
     assert!(td.ensure_dir_with(p, b).is_err());
     td.create_dir("linkdest")?;
     assert!(td.ensure_dir_with(p, b).is_err());
+    assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
 
     Ok(())
 }
