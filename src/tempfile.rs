@@ -137,11 +137,11 @@ impl<'p, 'd> LinkableTempfile<'p, 'd> {
         let name = target.file_name().ok_or_else(|| {
             std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a file name")
         })?;
-        let subdir = if let Some(parent) = target.parent().filter(|v| !v.as_os_str().is_empty()) {
-            Some(dir.open_dir(parent)?)
-        } else {
-            None
-        };
+        let subdir = target
+            .parent()
+            .filter(|v| !v.as_os_str().is_empty())
+            .map(|p| dir.open_dir(p))
+            .transpose()?;
         let (fd, tempname) = new_tempfile(subdir.as_ref().unwrap_or(dir))?;
         Ok(Self {
             name,
