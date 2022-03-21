@@ -1,10 +1,10 @@
 use anyhow::Result;
-use cap_std::fs::Permissions;
+use cap_std::fs::{Dir, Permissions};
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
 use rustix::fd::FromFd;
 use std::io::Write;
-use std::os::unix::prelude::PermissionsExt;
+use std::os::unix::prelude::{OsStrExt, PermissionsExt};
 use std::path::Path;
 use std::{process::Command, sync::Arc};
 
@@ -80,6 +80,27 @@ fn optionals() -> Result<()> {
     assert!(td.open_dir_optional("somedir")?.is_none());
     td.create_dir("somedir")?;
     assert!(td.open_dir_optional("somedir")?.is_some());
+    Ok(())
+}
+
+#[test]
+fn ambient_dir_of() -> Result<()> {
+    let (_subd, path) = Dir::open_dir_of(Path::new("foo"), cap_std::ambient_authority()).unwrap();
+    assert_eq!(path.as_bytes(), b"foo");
+
+    let hosts = Path::new("/etc/hosts");
+    if hosts.exists() {
+        let expected_meta = Path::new("/etc").metadata().unwrap();
+        let (etc, path) = Dir::open_dir_of(hosts, cap_std::ambient_authority()).unwrap();
+        assert_eq!(path.as_bytes(), b"hosts");
+
+        let meta = etc.dir_metadata().unwrap();
+        assert_eq!(
+            Permissions::from_std(expected_meta.permissions()),
+            meta.permissions()
+        );
+    }
+
     Ok(())
 }
 

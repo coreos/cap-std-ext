@@ -4,6 +4,7 @@
 
 use crate::tempfile::LinkableTempfile;
 use cap_std::fs::{Dir, File, Metadata};
+use std::ffi::OsStr;
 use std::io;
 use std::io::Result;
 use std::path::Path;
@@ -15,6 +16,9 @@ pub trait CapStdExtDirExt {
 
     /// Open a directory, but return `Ok(None)` if it does not exist.
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>>;
+
+    /// Given a (possibly absolute) filename, return its parent directory and filename.
+    fn open_dir_of(path: &Path, authority: cap_std::AmbientAuthority) -> Result<(Dir, &OsStr)>;
 
     /// Create the target directory, but do nothing if a directory already exists at that path.
     /// The return value will be `true` if the directory was created.  An error will be
@@ -101,6 +105,24 @@ impl CapStdExtDirExt for Dir {
 
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>> {
         map_optional(self.open_dir(path.as_ref()))
+    }
+
+    fn open_dir_of(
+        path: &Path,
+        ambient_authority: cap_std::AmbientAuthority,
+    ) -> Result<(Dir, &OsStr)> {
+        let parent = path
+            .parent()
+            .filter(|v| !v.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        let parent = Dir::open_ambient_dir(parent, ambient_authority)?;
+        let filename = path.file_name().ok_or_else(|| {
+            std::io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "the source path does not name a file",
+            )
+        })?;
+        Ok((parent, filename))
     }
 
     fn ensure_dir_with(
