@@ -139,20 +139,20 @@ fn default_mode(d: &Dir) -> Result<Permissions> {
 fn link_tempfile_with() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     let p = Path::new("foo");
-    td.replace_file_with(p, |f| writeln!(f, "hello world"))
+    td.atomic_replace_with(p, |f| writeln!(f, "hello world"))
         .unwrap();
     assert_eq!(td.read_to_string(p).unwrap().as_str(), "hello world\n");
     let default_perms = default_mode(&td)?;
     assert_eq!(td.metadata(p)?.permissions(), default_perms);
 
-    td.replace_file_with(p, |f| writeln!(f, "atomic replacement"))
+    td.atomic_replace_with(p, |f| writeln!(f, "atomic replacement"))
         .unwrap();
     assert_eq!(
         td.read_to_string(p).unwrap().as_str(),
         "atomic replacement\n"
     );
 
-    td.replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
+    td.atomic_replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
         writeln!(f, "atomic replacement 2")
     })
     .unwrap();
@@ -163,7 +163,7 @@ fn link_tempfile_with() -> Result<()> {
     assert_eq!(td.metadata(p)?.permissions().mode(), 0o640);
 
     let e = td
-        .replace_file_with(p, |f| {
+        .atomic_replace_with(p, |f| {
             writeln!(f, "should not be written")?;
             Err::<(), _>(std::io::Error::new(std::io::ErrorKind::Other, "oops"))
         })
@@ -176,7 +176,7 @@ fn link_tempfile_with() -> Result<()> {
         "atomic replacement 2\n"
     );
 
-    td.replace_contents_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
+    td.atomic_write_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
         .unwrap();
     assert_eq!(
         td.read_to_string(p).unwrap().as_str(),
@@ -186,7 +186,7 @@ fn link_tempfile_with() -> Result<()> {
 
     // Verify we correctly pass through anyhow::Error too
     let r = td
-        .replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
+        .atomic_replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
             writeln!(f, "atomic replacement 2")?;
             Ok::<_, anyhow::Error>(42u32)
         })

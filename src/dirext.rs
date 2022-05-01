@@ -39,7 +39,7 @@ pub trait CapStdExtDirExt {
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace`].
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn replace_file_with<F, T, E>(
+    fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
         f: F,
@@ -52,7 +52,7 @@ pub trait CapStdExtDirExt {
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn replace_file_with_perms<F, T, E>(
+    fn atomic_replace_file_with_perms<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
         perms: cap_std::fs::Permissions,
@@ -66,7 +66,7 @@ pub trait CapStdExtDirExt {
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn replace_contents_with_perms(
+    fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
         contents: impl AsRef<[u8]>,
@@ -170,7 +170,7 @@ impl CapStdExtDirExt for Dir {
         }
     }
 
-    fn replace_file_with<F, T, E>(
+    fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
         f: F,
@@ -191,7 +191,7 @@ impl CapStdExtDirExt for Dir {
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn replace_file_with_perms<F, T, E>(
+    fn atomic_replace_file_with_perms<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
         perms: cap_std::fs::Permissions,
@@ -213,12 +213,12 @@ impl CapStdExtDirExt for Dir {
         Ok(r)
     }
 
-    fn replace_contents_with_perms(
+    fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()> {
-        self.replace_file_with_perms(destname, perms, |f| f.write_all(contents.as_ref()))
+        self.atomic_replace_file_with_perms(destname, perms, |f| f.write_all(contents.as_ref()))
     }
 }
