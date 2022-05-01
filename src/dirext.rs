@@ -2,10 +2,11 @@
 //!
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
-use crate::tempfile::LinkableTempfile;
 use cap_std::fs::{Dir, File, Metadata};
-use std::io;
+use std::ffi::OsStr;
 use std::io::Result;
+use std::io::{self, Write};
+use std::ops::Deref;
 use std::path::Path;
 
 /// Extension trait for [`cap_std::fs::Dir`]
@@ -34,14 +35,6 @@ pub trait CapStdExtDirExt {
     /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
-    /// Create a new anonymous file that can be given a persistent name.
-    /// On Linux, this uses `O_TMPFILE` if possible, otherwise a randomly named
-    /// temporary file is used.  
-    ///
-    /// The file can later be linked into place once it has been completely written.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn new_linkable_file<'p, 'd>(&'d self, path: &'p Path) -> Result<LinkableTempfile<'p, 'd>>;
-
     /// Atomically write a file, replacing an existing one (if present).
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace`].
@@ -52,7 +45,7 @@ pub trait CapStdExtDirExt {
         f: F,
     ) -> std::result::Result<T, E>
     where
-        F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
 
     /// Atomically write a file using specified permissions, replacing an existing one (if present).
@@ -66,7 +59,7 @@ pub trait CapStdExtDirExt {
         f: F,
     ) -> std::result::Result<T, E>
     where
-        F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
 
     /// Atomically write a file contents using specified permissions, replacing an existing one (if present).
@@ -92,6 +85,44 @@ fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
             }
         }
     }
+}
+
+enum DirOwnedOrBorrowed<'d> {
+    Owned(Dir),
+    Borrowed(&'d Dir),
+}
+
+impl<'d> Deref for DirOwnedOrBorrowed<'d> {
+    type Target = Dir;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Owned(d) => d,
+            Self::Borrowed(d) => d,
+        }
+    }
+}
+
+/// Given a directory reference and a path, if the path includes a subdirectory (e.g. on Unix has a `/`)
+/// then open up the target directory, and return the file name.
+///
+/// Otherwise, reborrow the directory and return the file name.
+///
+/// It is an error if the target path does not name a file.
+fn subdir_of<'d, 'p>(d: &'d Dir, p: &'p Path) -> io::Result<(DirOwnedOrBorrowed<'d>, &'p OsStr)> {
+    let name = p
+        .file_name()
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a file name"))?;
+    let r = if let Some(subdir) = p
+        .parent()
+        .filter(|v| !v.as_os_str().is_empty())
+        .map(|p| d.open_dir(p))
+    {
+        DirOwnedOrBorrowed::Owned(subdir?)
+    } else {
+        DirOwnedOrBorrowed::Borrowed(d)
+    };
+    Ok((r, name))
 }
 
 impl CapStdExtDirExt for Dir {
@@ -139,30 +170,23 @@ impl CapStdExtDirExt for Dir {
         }
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn new_linkable_file<'p, 'd>(
-        &'d self,
-        target: &'p Path,
-    ) -> Result<crate::tempfile::LinkableTempfile<'p, 'd>> {
-        crate::tempfile::LinkableTempfile::new_in(self, target)
-    }
-
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn replace_file_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
         f: F,
     ) -> std::result::Result<T, E>
     where
-        F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>,
     {
-        let t = self.new_linkable_file(destname.as_ref())?;
+        let destname = destname.as_ref();
+        let (d, name) = subdir_of(self, destname)?;
+        let t = cap_tempfile::TempFile::new(&d)?;
         let mut bufw = std::io::BufWriter::new(t);
         let r = f(&mut bufw)?;
         bufw.into_inner()
             .map_err(From::from)
-            .and_then(|t| t.replace())?;
+            .and_then(|t| t.replace(name))?;
         Ok(r)
     }
 
@@ -174,15 +198,18 @@ impl CapStdExtDirExt for Dir {
         f: F,
     ) -> std::result::Result<T, E>
     where
-        F: FnOnce(&mut std::io::BufWriter<LinkableTempfile>) -> std::result::Result<T, E>,
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>,
     {
-        let t = self.new_linkable_file(destname.as_ref())?;
+        let destname = destname.as_ref();
+        let (d, name) = subdir_of(self, destname)?;
+        let t = cap_tempfile::TempFile::new(&d)?;
         let mut bufw = std::io::BufWriter::new(t);
         let r = f(&mut bufw)?;
-        bufw.into_inner()
-            .map_err(From::from)
-            .and_then(|t| t.replace_with_perms(perms))?;
+        bufw.into_inner().map_err(From::from).and_then(|mut t| {
+            t.as_file_mut().set_permissions(perms)?;
+            t.replace(name)
+        })?;
         Ok(r)
     }
 
@@ -192,7 +219,6 @@ impl CapStdExtDirExt for Dir {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()> {
-        let t = self.new_linkable_file(destname.as_ref())?;
-        t.replace_contents_using_perms(contents, perms)
+        self.replace_file_with_perms(destname, perms, |f| f.write_all(contents.as_ref()))
     }
 }

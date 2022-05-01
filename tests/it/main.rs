@@ -1,5 +1,5 @@
 use anyhow::Result;
-use cap_std::fs::Permissions;
+use cap_std::fs::{Dir, Permissions};
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
 use rustix::fd::FromFd;
@@ -127,54 +127,12 @@ fn ensuredir() -> Result<()> {
     Ok(())
 }
 
-#[test]
-fn link_tempfile() -> Result<()> {
-    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
-    let p = Path::new("foo");
-    let mut f = td.new_linkable_file(p).unwrap();
-    assert!(td.metadata_optional(p).unwrap().is_none());
-    writeln!(f, "hello world").unwrap();
-    drop(f);
-    // Verify we didn't write the file
-    assert!(td.metadata_optional(p)?.is_none());
-
-    // Do a write
-    let mut f = td.new_linkable_file(p).unwrap();
-    writeln!(f, "hello world").unwrap();
-    f.emplace().unwrap();
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
-
-    // Fail to emplace to existing
-    let mut f = td.new_linkable_file(p).unwrap();
-    writeln!(f, "second hello world").unwrap();
-    assert_eq!(
-        f.emplace().err().unwrap().kind(),
-        std::io::ErrorKind::AlreadyExists
-    );
-
-    // Replace it
-    let mut f = td.new_linkable_file(p).unwrap();
-    writeln!(f, "second hello world").unwrap();
-    f.replace().unwrap();
-    assert_eq!(
-        td.read_to_string(p).unwrap().as_str(),
-        "second hello world\n"
-    );
-    // Should still be 0600
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
-
-    // Change the current permissions, then replace and ensure they're preserved
-    td.set_permissions(p, Permissions::from_mode(0o750))?;
-    let mut f = td.new_linkable_file(p).unwrap();
-    writeln!(f, "third hello world").unwrap();
-    f.replace().unwrap();
-    assert_eq!(
-        td.read_to_string(p).unwrap().as_str(),
-        "third hello world\n"
-    );
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o750);
-
-    Ok(())
+/// Hack to determine the default mode for a file; we could
+/// on Linux actually parse /proc/self/umask as is done in cap_tempfile,
+/// but eh this is just to cross check with that code.
+fn default_mode(d: &Dir) -> Result<Permissions> {
+    let f = cap_tempfile::TempFile::new(d)?;
+    Ok(f.as_file().metadata()?.permissions())
 }
 
 #[test]
@@ -184,8 +142,8 @@ fn link_tempfile_with() -> Result<()> {
     td.replace_file_with(p, |f| writeln!(f, "hello world"))
         .unwrap();
     assert_eq!(td.read_to_string(p).unwrap().as_str(), "hello world\n");
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o600);
-    td.set_permissions(p, Permissions::from_mode(0o750))?;
+    let default_perms = default_mode(&td)?;
+    assert_eq!(td.metadata(p)?.permissions(), default_perms);
 
     td.replace_file_with(p, |f| writeln!(f, "atomic replacement"))
         .unwrap();
@@ -193,7 +151,6 @@ fn link_tempfile_with() -> Result<()> {
         td.read_to_string(p).unwrap().as_str(),
         "atomic replacement\n"
     );
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o750);
 
     td.replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
         writeln!(f, "atomic replacement 2")
