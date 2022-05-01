@@ -176,6 +176,13 @@ fn link_tempfile_with() -> Result<()> {
         "atomic replacement 2\n"
     );
 
+    td.atomic_write(p, "atomic replacement write\n").unwrap();
+    assert_eq!(
+        td.read_to_string(p).unwrap().as_str(),
+        "atomic replacement write\n"
+    );
+    assert_eq!(td.metadata(p)?.permissions(), default_perms);
+
     td.atomic_write_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
         .unwrap();
     assert_eq!(

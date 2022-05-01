@@ -62,6 +62,12 @@ pub trait CapStdExtDirExt {
         F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
 
+    /// Atomically write a file contents, replacing an existing one (if present).
+    ///
+    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()>;
+
     /// Atomically write a file contents using specified permissions, replacing an existing one (if present).
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
@@ -211,6 +217,10 @@ impl CapStdExtDirExt for Dir {
             t.replace(name)
         })?;
         Ok(r)
+    }
+
+    fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
+        self.atomic_replace_with(destname, |f| f.write_all(contents.as_ref()))
     }
 
     fn atomic_write_with_perms(
