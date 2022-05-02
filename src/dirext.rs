@@ -35,7 +35,33 @@ pub trait CapStdExtDirExt {
     /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
-    /// Atomically write a file by calling the provded closure.
+    /// Atomically write a file by calling the provided closure.
+    ///
+    /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
+    /// and passed to the closure.
+    ///
+    /// The closure may also perform other file operations beyond writing, such as changing
+    /// file permissions:
+    ///
+    /// ```rust
+    /// # use std::io;
+    /// # use std::io::Write;
+    /// # fn main() -> io::Result<()> {
+    /// # let somedir = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    /// use cap_std_ext::prelude::*;
+    /// let contents = b"hello world\n";
+    /// somedir.atomic_replace_with("somefilename", |f| -> io::Result<_> {
+    ///     f.write_all(contents)?;
+    ///     f.flush()?;
+    ///     use std::os::unix::prelude::PermissionsExt;
+    ///     let perms = cap_std::fs::Permissions::from_mode(0o600);
+    ///     f.get_mut().as_file_mut().set_permissions(perms)?;
+    ///     Ok(())
+    /// })
+    /// # }
+    /// ```
+    ///
+    /// Any existing file will be replaced.
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -45,14 +71,10 @@ pub trait CapStdExtDirExt {
         F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
         E: From<std::io::Error>;
 
-    /// Atomically write a file contents, replacing an existing one (if present).
-    ///
-    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
+    /// Atomically write the provided contents to a file.
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()>;
 
-    /// Atomically write a file contents using specified permissions, replacing an existing one (if present).
-    ///
-    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
+    /// Atomically write the provided contents to a file, using specified permissions.
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
