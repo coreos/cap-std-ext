@@ -152,16 +152,6 @@ fn link_tempfile_with() -> Result<()> {
         "atomic replacement\n"
     );
 
-    td.atomic_replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
-        writeln!(f, "atomic replacement 2")
-    })
-    .unwrap();
-    assert_eq!(
-        td.read_to_string(p).unwrap().as_str(),
-        "atomic replacement 2\n"
-    );
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o640);
-
     let e = td
         .atomic_replace_with(p, |f| {
             writeln!(f, "should not be written")?;
@@ -173,7 +163,7 @@ fn link_tempfile_with() -> Result<()> {
     // We should not have written to the file!
     assert_eq!(
         td.read_to_string(p).unwrap().as_str(),
-        "atomic replacement 2\n"
+        "atomic replacement\n"
     );
 
     td.atomic_write(p, "atomic replacement write\n").unwrap();
@@ -190,15 +180,6 @@ fn link_tempfile_with() -> Result<()> {
         "atomic replacement 3\n"
     );
     assert_eq!(td.metadata(p)?.permissions().mode(), 0o700);
-
-    // Verify we correctly pass through anyhow::Error too
-    let r = td
-        .atomic_replace_file_with_perms(p, Permissions::from_mode(0o640), |f| {
-            writeln!(f, "atomic replacement 2")?;
-            Ok::<_, anyhow::Error>(42u32)
-        })
-        .unwrap();
-    assert_eq!(r, 42);
 
     Ok(())
 }

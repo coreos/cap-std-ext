@@ -2,11 +2,12 @@
 //!
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
-use cap_std::fs::{Dir, File, Metadata};
+use cap_std::fs::{Dir, File, Metadata, Permissions};
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
 use std::ops::Deref;
+use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 
 /// Extension trait for [`cap_std::fs::Dir`]
@@ -35,27 +36,11 @@ pub trait CapStdExtDirExt {
     /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
-    /// Atomically write a file, replacing an existing one (if present).
-    ///
-    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace`].
+    /// Atomically write a file by calling the provded closure.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
-        f: F,
-    ) -> std::result::Result<T, E>
-    where
-        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
-        E: From<std::io::Error>;
-
-    /// Atomically write a file using specified permissions, replacing an existing one (if present).
-    ///
-    /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn atomic_replace_file_with_perms<F, T, E>(
-        &self,
-        destname: impl AsRef<Path>,
-        perms: cap_std::fs::Permissions,
         f: F,
     ) -> std::result::Result<T, E>
     where
@@ -196,29 +181,6 @@ impl CapStdExtDirExt for Dir {
         Ok(r)
     }
 
-    #[cfg(any(target_os = "android", target_os = "linux"))]
-    fn atomic_replace_file_with_perms<F, T, E>(
-        &self,
-        destname: impl AsRef<Path>,
-        perms: cap_std::fs::Permissions,
-        f: F,
-    ) -> std::result::Result<T, E>
-    where
-        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
-        E: From<std::io::Error>,
-    {
-        let destname = destname.as_ref();
-        let (d, name) = subdir_of(self, destname)?;
-        let t = cap_tempfile::TempFile::new(&d)?;
-        let mut bufw = std::io::BufWriter::new(t);
-        let r = f(&mut bufw)?;
-        bufw.into_inner().map_err(From::from).and_then(|mut t| {
-            t.as_file_mut().set_permissions(perms)?;
-            t.replace(name)
-        })?;
-        Ok(r)
-    }
-
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
         self.atomic_replace_with(destname, |f| f.write_all(contents.as_ref()))
     }
@@ -229,6 +191,19 @@ impl CapStdExtDirExt for Dir {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()> {
-        self.atomic_replace_file_with_perms(destname, perms, |f| f.write_all(contents.as_ref()))
+        self.atomic_replace_with(destname, |f| -> io::Result<_> {
+            // If the user is overriding the permissions, let's make the default be
+            // writable by us but not readable by anyone else, in case it has
+            // secret data.
+            #[cfg(unix)]
+            {
+                let perms = Permissions::from_mode(0o600);
+                f.get_mut().as_file_mut().set_permissions(perms)?;
+            }
+            f.write_all(contents.as_ref())?;
+            f.flush()?;
+            f.get_mut().as_file_mut().set_permissions(perms)?;
+            Ok(())
+        })
     }
 }
