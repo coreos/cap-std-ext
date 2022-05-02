@@ -17,6 +17,7 @@ pub mod dirext;
 
 /// Prelude, intended for glob import.
 pub mod prelude {
+    #[cfg(not(windows))]
     pub use super::cmdext::CapStdExtCommandExt;
     pub use super::dirext::CapStdExtDirExt;
 }

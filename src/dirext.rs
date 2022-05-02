@@ -2,12 +2,11 @@
 //!
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
-use cap_std::fs::{Dir, File, Metadata, Permissions};
+use cap_std::fs::{Dir, File, Metadata};
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
 use std::ops::Deref;
-use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 
 /// Extension trait for [`cap_std::fs::Dir`]
@@ -37,7 +36,6 @@ pub trait CapStdExtDirExt {
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
     /// Atomically write a file by calling the provded closure.
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -50,13 +48,11 @@ pub trait CapStdExtDirExt {
     /// Atomically write a file contents, replacing an existing one (if present).
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()>;
 
     /// Atomically write a file contents using specified permissions, replacing an existing one (if present).
     ///
     /// This wraps [`Self::new_linkable_file`] and [`crate::tempfile::LinkableTempfile::replace_with_perms`].
-    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
@@ -197,7 +193,8 @@ impl CapStdExtDirExt for Dir {
             // secret data.
             #[cfg(unix)]
             {
-                let perms = Permissions::from_mode(0o600);
+                use std::os::unix::prelude::PermissionsExt;
+                let perms = cap_std::fs::Permissions::from_mode(0o600);
                 f.get_mut().as_file_mut().set_permissions(perms)?;
             }
             f.write_all(contents.as_ref())?;
