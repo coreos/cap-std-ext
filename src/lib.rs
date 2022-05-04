@@ -14,11 +14,10 @@ pub use rustix;
 #[cfg(not(windows))]
 pub mod cmdext;
 pub mod dirext;
-#[cfg(any(target_os = "android", target_os = "linux"))]
-pub mod tempfile;
 
 /// Prelude, intended for glob import.
 pub mod prelude {
+    #[cfg(not(windows))]
     pub use super::cmdext::CapStdExtCommandExt;
     pub use super::dirext::CapStdExtDirExt;
 }
