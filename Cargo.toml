@@ -6,14 +6,15 @@ license = "MIT OR Apache-2.0"
 name = "cap-std-ext"
 readme = "README.md"
 repository = "https://github.com/cgwalters/cap-std-ext"
-version = "0.25.0"
+# Confusingly our version is one greater than cap-std for historical reasons.
+version = "0.26.0"
 
 [dependencies]
-cap-std = "0.24"
-cap-tempfile = "0.24.3"
+cap-std = "0.25"
+cap-tempfile = "0.25"
 
 [target.'cfg(not(windows))'.dependencies]
-rustix = { version = "0.33.0", features = ["procfs"] }
+rustix = { version = "0.35.0", features = ["procfs"] }
 #rustix = { git = "https://github.com/bytecodealliance/rustix", features = ["procfs"] }
 
 [dev-dependencies]

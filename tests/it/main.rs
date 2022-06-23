@@ -179,7 +179,7 @@ fn link_tempfile_with() -> Result<()> {
         td.read_to_string(p).unwrap().as_str(),
         "atomic replacement 3\n"
     );
-    assert_eq!(td.metadata(p)?.permissions().mode(), 0o700);
+    assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
 
     Ok(())
 }
