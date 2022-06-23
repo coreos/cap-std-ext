@@ -29,8 +29,8 @@ impl CapStdExtCommandExt for std::process::Command {
     fn take_fd_n(&mut self, fd: Arc<OwnedFd>, target: i32) -> &mut Self {
         unsafe {
             self.pre_exec(move || {
-                let target = rustix::io::OwnedFd::from_raw_fd(target);
-                rustix::io::dup2(&*fd, &target)?;
+                let mut target = rustix::io::OwnedFd::from_raw_fd(target);
+                rustix::io::dup2(&*fd, &mut target)?;
                 // Intentionally leak into the child.
                 let _ = target.into_raw_fd();
                 Ok(())
