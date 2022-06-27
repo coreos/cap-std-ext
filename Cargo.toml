@@ -1,7 +1,7 @@
 [package]
 authors = ["Colin Walters <walters@verbum.org>"]
 description = "Extension APIs for cap-std"
-edition = "2018"
+edition = "2021"
 license = "MIT OR Apache-2.0"
 name = "cap-std-ext"
 readme = "README.md"
