@@ -16,6 +16,12 @@ pub trait CapStdExtCommandExt {
     fn cwd_dir<T>(&mut self, dir: Arc<T>) -> &mut Self
     where
         T: Deref<Target = Dir> + Send + Sync + 'static;
+
+    /// Use the given directory as the current working directory for the process.
+    /// This command replaces [`cwd_dir`] which due to a mistake in API design
+    /// effectively only supports [`cap_tempfile::TempDir`] and not plain [`cap_std::fs::Dir`]
+    /// instances.
+    fn cwd_dir_owned(&mut self, dir: Dir) -> &mut Self;
 }
 
 #[allow(unsafe_code)]
@@ -37,6 +43,16 @@ impl CapStdExtCommandExt for std::process::Command {
     where
         T: Deref<Target = Dir> + Send + Sync + 'static,
     {
+        unsafe {
+            self.pre_exec(move || {
+                rustix::process::fchdir(dir.as_fd())?;
+                Ok(())
+            });
+        }
+        self
+    }
+
+    fn cwd_dir_owned(&mut self, dir: Dir) -> &mut Self {
         unsafe {
             self.pre_exec(move || {
                 rustix::process::fchdir(dir.as_fd())?;
