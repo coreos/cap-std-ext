@@ -50,13 +50,8 @@ fn fchdir() -> Result<()> {
     td.write("somefile", CONTENTS)?;
 
     let mut c = new_cmd();
-    // Test this deprecated path
-    c.cwd_dir(Arc::clone(&td));
-    test_cmd(c).unwrap();
-
-    let mut c = new_cmd();
     let subdir = td.open_dir(".")?;
-    c.cwd_dir_owned(subdir.try_clone()?);
+    c.cwd_dir(subdir.try_clone()?);
     test_cmd(c).unwrap();
 
     Ok(())

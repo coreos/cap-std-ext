@@ -3,7 +3,6 @@
 use cap_std::fs::Dir;
 use rustix::fd::{AsFd, FromRawFd, IntoRawFd};
 use rustix::io::OwnedFd;
-use std::ops::Deref;
 use std::os::unix::process::CommandExt;
 use std::sync::Arc;
 
@@ -13,15 +12,7 @@ pub trait CapStdExtCommandExt {
     fn take_fd_n(&mut self, fd: Arc<OwnedFd>, target: i32) -> &mut Self;
 
     /// Use the given directory as the current working directory for the process.
-    fn cwd_dir<T>(&mut self, dir: Arc<T>) -> &mut Self
-    where
-        T: Deref<Target = Dir> + Send + Sync + 'static;
-
-    /// Use the given directory as the current working directory for the process.
-    /// This command replaces [`cwd_dir`] which due to a mistake in API design
-    /// effectively only supports [`cap_tempfile::TempDir`] and not plain [`cap_std::fs::Dir`]
-    /// instances.
-    fn cwd_dir_owned(&mut self, dir: Dir) -> &mut Self;
+    fn cwd_dir(&mut self, dir: Dir) -> &mut Self;
 }
 
 #[allow(unsafe_code)]
@@ -39,20 +30,7 @@ impl CapStdExtCommandExt for std::process::Command {
         self
     }
 
-    fn cwd_dir<T>(&mut self, dir: Arc<T>) -> &mut Self
-    where
-        T: Deref<Target = Dir> + Send + Sync + 'static,
-    {
-        unsafe {
-            self.pre_exec(move || {
-                rustix::process::fchdir(dir.as_fd())?;
-                Ok(())
-            });
-        }
-        self
-    }
-
-    fn cwd_dir_owned(&mut self, dir: Dir) -> &mut Self {
+    fn cwd_dir(&mut self, dir: Dir) -> &mut Self {
         unsafe {
             self.pre_exec(move || {
                 rustix::process::fchdir(dir.as_fd())?;
