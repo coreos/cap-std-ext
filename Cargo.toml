@@ -10,8 +10,7 @@ repository = "https://github.com/cgwalters/cap-std-ext"
 version = "0.26.0"
 
 [dependencies]
-cap-std = "0.25"
-cap-tempfile = "0.25"
+cap-tempfile = "0.25.1"
 
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "0.35.0", features = ["procfs"] }

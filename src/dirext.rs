@@ -3,6 +3,7 @@
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
 use cap_std::fs::{Dir, File, Metadata};
+use cap_tempfile::cap_std;
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
@@ -46,6 +47,7 @@ pub trait CapStdExtDirExt {
     /// ```rust
     /// # use std::io;
     /// # use std::io::Write;
+    /// # use cap_tempfile::cap_std;
     /// # fn main() -> io::Result<()> {
     /// # let somedir = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     /// use cap_std_ext::prelude::*;

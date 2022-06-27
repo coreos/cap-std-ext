@@ -7,7 +7,7 @@
 #![cfg_attr(feature = "dox", feature(doc_cfg))]
 
 // Re-export our dependencies
-pub use cap_std;
+pub use cap_tempfile::cap_std;
 #[cfg(not(windows))]
 pub use rustix;
 
