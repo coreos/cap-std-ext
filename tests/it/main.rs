@@ -54,11 +54,6 @@ fn fchdir() -> Result<()> {
     c.cwd_dir(Arc::clone(&td));
     test_cmd(c).unwrap();
 
-    let mut c = new_cmd();
-    let subdir = td.open_dir(".")?;
-    c.cwd_dir_owned(subdir.try_clone()?);
-    test_cmd(c).unwrap();
-
     Ok(())
 }
 
