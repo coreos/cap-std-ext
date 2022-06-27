@@ -7,7 +7,7 @@ name = "cap-std-ext"
 readme = "README.md"
 repository = "https://github.com/cgwalters/cap-std-ext"
 # Confusingly our version is one greater than cap-std for historical reasons.
-version = "0.26.0"
+version = "0.26.1"
 
 [dependencies]
 cap-std = "0.25"
