@@ -4,7 +4,6 @@ use cap_std::fs::Dir;
 use cap_tempfile::cap_std;
 use rustix::fd::{AsFd, FromRawFd, IntoRawFd};
 use rustix::io::OwnedFd;
-use std::ops::Deref;
 use std::os::unix::process::CommandExt;
 use std::sync::Arc;
 
@@ -14,9 +13,7 @@ pub trait CapStdExtCommandExt {
     fn take_fd_n(&mut self, fd: Arc<OwnedFd>, target: i32) -> &mut Self;
 
     /// Use the given directory as the current working directory for the process.
-    fn cwd_dir<T>(&mut self, dir: Arc<T>) -> &mut Self
-    where
-        T: Deref<Target = Dir> + Send + Sync + 'static;
+    fn cwd_dir(&mut self, dir: Dir) -> &mut Self;
 }
 
 #[allow(unsafe_code)]
@@ -34,10 +31,7 @@ impl CapStdExtCommandExt for std::process::Command {
         self
     }
 
-    fn cwd_dir<T>(&mut self, dir: Arc<T>) -> &mut Self
-    where
-        T: Deref<Target = Dir> + Send + Sync + 'static,
-    {
+    fn cwd_dir(&mut self, dir: Dir) -> &mut Self {
         unsafe {
             self.pre_exec(move || {
                 rustix::process::fchdir(dir.as_fd())?;
