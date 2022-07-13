@@ -36,6 +36,10 @@ pub trait CapStdExtDirExt {
     /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
     fn remove_file_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
+    /// Remove a file or directory but return `Ok(false)` if the file does not exist.
+    /// Symbolic links are not followed.
+    fn remove_all_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
+
     /// Atomically write a file by calling the provided closure.
     ///
     /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
@@ -179,6 +183,23 @@ impl CapStdExtDirExt for Dir {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(e),
         }
+    }
+
+    fn remove_all_optional(&self, path: impl AsRef<Path>) -> Result<bool> {
+        let path = path.as_ref();
+        // This is obviously racy, but correctly matching on the errors
+        // runs into the fact that e.g. https://doc.rust-lang.org/std/io/enum.ErrorKind.html#variant.NotADirectory
+        // is unstable right now.
+        let meta = match self.symlink_metadata_optional(path)? {
+            Some(m) => m,
+            None => return Ok(false),
+        };
+        if meta.is_dir() {
+            self.remove_dir_all(path)?;
+        } else {
+            self.remove_file(path)?;
+        }
+        Ok(true)
     }
 
     fn atomic_replace_with<F, T, E>(
