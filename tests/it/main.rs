@@ -124,6 +124,32 @@ fn ensuredir() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_remove_all_optional() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+
+    let p = Path::new("somedir");
+    assert_eq!(td.remove_all_optional(p).unwrap(), false);
+    td.create_dir(p)?;
+    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    let subpath = p.join("foo/bar");
+    td.create_dir_all(subpath)?;
+    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+
+    // regular file
+    td.write(p, "test")?;
+    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+
+    // symlinks; broken and not
+    let p = Path::new("linksrc");
+    td.symlink("linkdest", p)?;
+    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    td.symlink("linkdest", p)?;
+    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+
+    Ok(())
+}
+
 /// Hack to determine the default mode for a file; we could
 /// on Linux actually parse /proc/self/umask as is done in cap_tempfile,
 /// but eh this is just to cross check with that code.
