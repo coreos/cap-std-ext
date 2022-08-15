@@ -206,3 +206,23 @@ fn link_tempfile_with() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_timestamps() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    let p = Path::new("foo");
+    td.atomic_replace_with(p, |f| writeln!(f, "hello world"))
+        .unwrap();
+    let ts0 = td.metadata(p)?.modified()?;
+    // This test assumes at least second granularity on filesystem timestamps, and
+    // that the system clock is not rolled back during the test.
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    let ts1 = td.metadata(p)?.modified()?;
+    assert_eq!(ts0, ts1);
+    td.update_timestamps(p).unwrap();
+    let ts2 = td.metadata(p)?.modified()?;
+    assert_ne!(ts1, ts2);
+    assert!(ts2 > ts1);
+
+    Ok(())
+}
