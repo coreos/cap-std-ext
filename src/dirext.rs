@@ -40,6 +40,10 @@ pub trait CapStdExtDirExt {
     /// Symbolic links are not followed.
     fn remove_all_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
 
+    /// Set the access and modification times to the current time.  Symbolic links are not followed.
+    #[cfg(unix)]
+    fn update_timestamps(&self, path: impl AsRef<Path>) -> Result<()>;
+
     /// Atomically write a file by calling the provided closure.
     ///
     /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
@@ -200,6 +204,29 @@ impl CapStdExtDirExt for Dir {
             self.remove_file(path)?;
         }
         Ok(true)
+    }
+
+    #[cfg(unix)]
+    fn update_timestamps(&self, path: impl AsRef<Path>) -> Result<()> {
+        use rustix::fd::AsFd;
+        use rustix::fs::UTIME_NOW;
+
+        let path = path.as_ref();
+        let now = rustix::fs::Timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_NOW,
+        };
+        let times = rustix::fs::Timestamps {
+            last_access: now,
+            last_modification: now,
+        };
+        rustix::fs::utimensat(
+            self.as_fd(),
+            path,
+            &times,
+            rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+        )?;
+        Ok(())
     }
 
     fn atomic_replace_with<F, T, E>(
