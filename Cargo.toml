@@ -2,18 +2,19 @@
 authors = ["Colin Walters <walters@verbum.org>"]
 description = "Extension APIs for cap-std"
 edition = "2021"
+rust-version = "1.58.0"
 license = "MIT OR Apache-2.0"
 name = "cap-std-ext"
 readme = "README.md"
 repository = "https://github.com/coreos/cap-std-ext"
-# Confusingly our version is one greater than cap-std for historical reasons.
-version = "0.26.2"
+version = "1.0.0"
 
 [dependencies]
-cap-tempfile = "0.25.1"
+cap-tempfile = "1.0.1"
+io-lifetimes = "1.0.1"
 
 [target.'cfg(not(windows))'.dependencies]
-rustix = { version = "0.35.0", features = ["fs", "procfs"] }
+rustix = { version = "0.36.0", features = ["fs", "procfs"] }
 #rustix = { git = "https://github.com/bytecodealliance/rustix", features = ["procfs"] }
 
 [dev-dependencies]
