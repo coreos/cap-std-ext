@@ -1,10 +1,9 @@
 use anyhow::Result;
 
-use cap_std::fs::{Dir, Permissions};
+use cap_std::fs::{Dir, File, Permissions};
 use cap_std_ext::cap_std;
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
-use rustix::fd::FromFd;
 use std::io::Write;
 use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
@@ -17,7 +16,7 @@ fn take_fd() -> Result<()> {
     c.arg("wc -c <&5");
     let (r, w) = rustix::io::pipe()?;
     let r = Arc::new(r);
-    let mut w = cap_std::fs::File::from_fd(w.into());
+    let mut w: File = w.into();
     c.take_fd_n(r.clone(), 5);
     write!(w, "hello world")?;
     drop(w);
