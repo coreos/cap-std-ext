@@ -1,6 +1,7 @@
 //! Extensions for [`std::process::Command`].
 
 use cap_std::fs::Dir;
+use cap_std::io_lifetimes;
 use cap_tempfile::cap_std;
 use io_lifetimes::OwnedFd;
 use rustix::fd::{AsFd, FromRawFd, IntoRawFd};

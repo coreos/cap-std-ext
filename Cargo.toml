@@ -11,7 +11,6 @@ version = "1.0.0"
 
 [dependencies]
 cap-tempfile = "1.0.1"
-io-lifetimes = "1.0.1"
 
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "0.36.0", features = ["fs", "procfs"] }
