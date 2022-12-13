@@ -216,9 +216,12 @@ impl CapStdExtDirExt for Dir {
             tv_sec: 0,
             tv_nsec: UTIME_NOW,
         };
+        // https://github.com/bytecodealliance/rustix/commit/69af396b79e296717bece8148b1f6165b810885c
+        // means that Timespec only implements Copy on 64 bit right now.
+        #[allow(clippy::clone_on_copy)]
         let times = rustix::fs::Timestamps {
-            last_access: now,
-            last_modification: now,
+            last_access: now.clone(),
+            last_modification: now.clone(),
         };
         rustix::fs::utimensat(
             self.as_fd(),
