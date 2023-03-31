@@ -13,7 +13,7 @@ version = "1.0.2"
 cap-tempfile = "1.0.1"
 
 [target.'cfg(not(windows))'.dependencies]
-rustix = { version = "0.36.0", features = ["fs", "procfs"] }
+rustix = { version = "0.36.0", features = ["fs", "procfs", "process"] }
 #rustix = { git = "https://github.com/bytecodealliance/rustix", features = ["procfs"] }
 
 [dev-dependencies]
