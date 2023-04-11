@@ -9,8 +9,6 @@
 // Re-export our dependencies
 pub use cap_tempfile;
 pub use cap_tempfile::cap_std;
-#[cfg(not(windows))]
-pub use rustix;
 
 #[cfg(not(windows))]
 pub mod cmdext;
