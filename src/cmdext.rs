@@ -1,4 +1,9 @@
-//! Extensions for [`std::process::Command`].
+//! Extensions for [`std::process::Command`] that operate on concepts from cap-std.
+//!
+//! The key APIs here are:
+//!
+//! - File descriptor passing
+//! - Changing to a file-descriptor relative directory
 
 use cap_std::fs::Dir;
 use cap_std::io_lifetimes;
@@ -9,6 +14,8 @@ use std::os::unix::process::CommandExt;
 use std::sync::Arc;
 
 /// Extension trait for [`std::process::Command`].
+///
+/// [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 pub trait CapStdExtCommandExt {
     /// Pass a file descriptor into the target process.
     fn take_fd_n(&mut self, fd: Arc<OwnedFd>, target: i32) -> &mut Self;
