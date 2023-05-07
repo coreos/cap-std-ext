@@ -1,4 +1,10 @@
-//! Extensions for [`cap_std::fs::Dir`].
+//! Extensions for [`cap_std::fs::Dir`].  Key features here include:
+//!
+//! - "optional" variants that return `Result<Option<T>>` for nonexistent paths, when
+//!   it is a normal case that paths may not exist.
+//! - A helper to update timestamps
+//! - "atomic write" APIs that create a new file, then rename over the existing one
+//!   to avoid half-written updates to files.
 //!
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
@@ -10,7 +16,9 @@ use std::io::{self, Write};
 use std::ops::Deref;
 use std::path::Path;
 
-/// Extension trait for [`cap_std::fs::Dir`]
+/// Extension trait for [`cap_std::fs::Dir`].
+///
+/// [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 pub trait CapStdExtDirExt {
     /// Open a file read-only, but return `Ok(None)` if it does not exist.
     fn open_optional(&self, path: impl AsRef<Path>) -> Result<Option<File>>;
