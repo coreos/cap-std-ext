@@ -17,7 +17,7 @@ fn take_fd() -> Result<()> {
     let (r, w) = rustix::io::pipe()?;
     let r = Arc::new(r);
     let mut w: File = w.into();
-    c.take_fd_n(r.clone(), 5);
+    c.take_fd_n(r, 5);
     write!(w, "hello world")?;
     drop(w);
     c.stdout(std::process::Stdio::piped());
@@ -65,12 +65,12 @@ fn optionals() -> Result<()> {
     // file
     assert!(td.open_optional("bar")?.is_none());
     assert!(td.metadata_optional("bar").unwrap().is_none());
-    assert_eq!(td.remove_file_optional("bar")?, false);
+    assert!(!(td.remove_file_optional("bar")?));
     td.write("bar", "testcontents")?;
     assert!(td.metadata_optional("bar").unwrap().is_some());
     assert!(td.symlink_metadata_optional("bar").unwrap().is_some());
     assert_eq!(td.read("bar")?.as_slice(), b"testcontents");
-    assert_eq!(td.remove_file_optional("bar")?, true);
+    assert!(td.remove_file_optional("bar")?);
 
     // directory
     assert!(td.open_dir_optional("somedir")?.is_none());
@@ -90,7 +90,7 @@ fn ensuredir() -> Result<()> {
     assert!(td.ensure_dir_with(p, b).unwrap());
     assert!(td.metadata_optional(p)?.is_some());
     assert!(td.symlink_metadata_optional(p)?.is_some());
-    assert_eq!(td.ensure_dir_with(p, b).unwrap(), false);
+    assert!(!td.ensure_dir_with(p, b).unwrap());
 
     let p = Path::new("somedir/without/existing-parent");
     // We should fail because the intermediate directory doesn't exist.
@@ -98,7 +98,7 @@ fn ensuredir() -> Result<()> {
     // Now create the parent
     assert!(td.ensure_dir_with(p.parent().unwrap(), b).unwrap());
     assert!(td.ensure_dir_with(p, b).unwrap());
-    assert_eq!(td.ensure_dir_with(p, b).unwrap(), false);
+    assert!(!td.ensure_dir_with(p, b).unwrap());
 
     // Verify we don't replace a file
     let p = Path::new("somefile");
@@ -128,23 +128,23 @@ fn test_remove_all_optional() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
 
     let p = Path::new("somedir");
-    assert_eq!(td.remove_all_optional(p).unwrap(), false);
+    assert!(!td.remove_all_optional(p).unwrap());
     td.create_dir(p)?;
-    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    assert!(td.remove_all_optional(p).unwrap());
     let subpath = p.join("foo/bar");
     td.create_dir_all(subpath)?;
-    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    assert!(td.remove_all_optional(p).unwrap());
 
     // regular file
     td.write(p, "test")?;
-    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    assert!(td.remove_all_optional(p).unwrap());
 
     // symlinks; broken and not
     let p = Path::new("linksrc");
     td.symlink("linkdest", p)?;
-    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    assert!(td.remove_all_optional(p).unwrap());
     td.symlink("linkdest", p)?;
-    assert_eq!(td.remove_all_optional(p).unwrap(), true);
+    assert!(td.remove_all_optional(p).unwrap());
 
     Ok(())
 }
