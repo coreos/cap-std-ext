@@ -14,7 +14,7 @@ fn take_fd() -> Result<()> {
     let mut c = Command::new("/bin/bash");
     c.arg("-c");
     c.arg("wc -c <&5");
-    let (r, w) = rustix::io::pipe()?;
+    let (r, w) = rustix::pipe::pipe()?;
     let r = Arc::new(r);
     let mut w: File = w.into();
     c.take_fd_n(r, 5);
