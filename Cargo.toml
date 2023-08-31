@@ -2,7 +2,7 @@
 authors = ["Colin Walters <walters@verbum.org>"]
 description = "Extension APIs for cap-std"
 edition = "2021"
-rust-version = "1.58.0"
+rust-version = "1.70.0"
 license = "MIT OR Apache-2.0"
 name = "cap-std-ext"
 readme = "README.md"
