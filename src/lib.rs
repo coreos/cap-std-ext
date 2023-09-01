@@ -7,6 +7,7 @@
 #![cfg_attr(feature = "dox", feature(doc_cfg))]
 
 // Re-export our dependencies
+pub use cap_primitives;
 pub use cap_tempfile;
 pub use cap_tempfile::cap_std;
 
