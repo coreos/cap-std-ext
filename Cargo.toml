@@ -11,7 +11,7 @@ repository = "https://github.com/coreos/cap-std-ext"
 version = "3.0.1"
 
 [dependencies]
-cap-tempfile = "2"
+cap-tempfile = "3"
 cap-primitives = "2"
 
 [target.'cfg(not(windows))'.dependencies]
