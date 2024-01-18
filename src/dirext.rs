@@ -71,7 +71,7 @@ pub trait CapStdExtDirExt {
     /// somedir.atomic_replace_with("somefilename", |f| -> io::Result<_> {
     ///     f.write_all(contents)?;
     ///     f.flush()?;
-    ///     use std::os::unix::prelude::PermissionsExt;
+    ///     use cap_std::fs::PermissionsExt;
     ///     let perms = cap_std::fs::Permissions::from_mode(0o600);
     ///     f.get_mut().as_file_mut().set_permissions(perms)?;
     ///     Ok(())
@@ -276,7 +276,7 @@ impl CapStdExtDirExt for Dir {
             // secret data.
             #[cfg(unix)]
             {
-                use std::os::unix::prelude::PermissionsExt;
+                use cap_std::fs::PermissionsExt;
                 let perms = cap_std::fs::Permissions::from_mode(0o600);
                 f.get_mut().as_file_mut().set_permissions(perms)?;
             }

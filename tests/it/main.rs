@@ -1,11 +1,10 @@
 use anyhow::Result;
 
-use cap_std::fs::{Dir, File, Permissions};
+use cap_std::fs::{Dir, File, Permissions, PermissionsExt};
 use cap_std_ext::cap_std;
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
 use std::io::Write;
-use std::os::unix::prelude::PermissionsExt;
 use std::path::Path;
 use std::{process::Command, sync::Arc};
 
