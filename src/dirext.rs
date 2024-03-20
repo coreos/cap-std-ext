@@ -57,6 +57,16 @@ pub trait CapStdExtDirExt {
     /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
     /// and passed to the closure.
     ///
+    /// # Existing files and metadata
+    ///
+    /// If the target path already exists and is a regular file (not a symbolic link or directory),
+    /// then its access permissions (Unix mode) will be preserved.  However, other metadata
+    /// such as extended attributes will *not* be preserved automatically.  To do this will
+    /// require a higher level wrapper which queries the existing file and gathers such metadata
+    /// before replacement.
+    ///
+    /// # Example, including setting permissions
+    ///
     /// The closure may also perform other file operations beyond writing, such as changing
     /// file permissions:
     ///
@@ -251,9 +261,22 @@ impl CapStdExtDirExt for Dir {
     {
         let destname = destname.as_ref();
         let (d, name) = subdir_of(self, destname)?;
-        let t = cap_tempfile::TempFile::new(&d)?;
+        let existing_metadata = d.symlink_metadata_optional(destname)?;
+        // If the target is already a file, then acquire its mode, which we will preserve by default.
+        // We don't follow symlinks here for replacement, and so we definitely don't want to pick up its mode.
+        let existing_perms = existing_metadata
+            .filter(|m| m.is_file())
+            .map(|m| m.permissions());
+        let mut t = cap_tempfile::TempFile::new(&d)?;
+        // Apply the permissions, if we have them
+        if let Some(existing_perms) = existing_perms {
+            t.as_file_mut().set_permissions(existing_perms)?;
+        }
+        // We always operate in terms of buffered writes
         let mut bufw = std::io::BufWriter::new(t);
+        // Call the provided closure to generate the file content
         let r = f(&mut bufw)?;
+        // Flush the buffer, and rename the temporary file into place
         bufw.into_inner()
             .map_err(From::from)
             .and_then(|t| t.replace(name))?;
