@@ -202,6 +202,38 @@ fn link_tempfile_with() -> Result<()> {
     );
     assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
 
+    // Ensure we preserve the executable bit on an existing file
+    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o700, 0o700);
+    td.atomic_write(p, "atomic replacement 4\n").unwrap();
+    assert_eq!(
+        td.read_to_string(p).unwrap().as_str(),
+        "atomic replacement 4\n"
+    );
+    assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
+
+    // But we should ignore permissions on a symlink (both existing and broken)
+    td.remove_file(p)?;
+    let p2 = Path::new("bar");
+    td.atomic_write_with_perms(p2, "link target", Permissions::from_mode(0o755))
+        .unwrap();
+    td.symlink(p2, p)?;
+    td.atomic_write(p, "atomic replacement symlink\n").unwrap();
+    assert_eq!(td.metadata(p)?.permissions(), default_perms);
+    // And break the link
+    td.remove_file(p2)?;
+    td.atomic_write(p, "atomic replacement symlink\n").unwrap();
+    assert_eq!(td.metadata(p)?.permissions(), default_perms);
+
+    // Also test with mode 0600
+    td.atomic_write_with_perms(p, "self-only file", Permissions::from_mode(0o600))
+        .unwrap();
+    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+    td.atomic_write(p, "self-only file v2").unwrap();
+    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+    // But we can override
+    td.atomic_write_with_perms(p, "self-only file v3", Permissions::from_mode(0o640))
+        .unwrap();
+    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o640);
     Ok(())
 }
 
