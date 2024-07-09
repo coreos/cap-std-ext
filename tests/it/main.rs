@@ -256,3 +256,52 @@ fn test_timestamps() -> Result<()> {
 
     Ok(())
 }
+
+// For now just this test is copy-pasted to verify utf8
+#[test]
+#[cfg(feature = "fs_utf8")]
+fn ensuredir_utf8() -> Result<()> {
+    use cap_std::fs_utf8::camino::Utf8Path;
+    use cap_std_ext::dirext::CapStdExtDirExtUtf8;
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    let td = &cap_std::fs_utf8::Dir::from_cap_std((&*td).try_clone()?);
+
+    let p = Utf8Path::new("somedir");
+    let b = &cap_std::fs::DirBuilder::new();
+    assert!(td.metadata_optional(p)?.is_none());
+    assert!(td.symlink_metadata_optional(p)?.is_none());
+    assert!(td.ensure_dir_with(p, b).unwrap());
+    assert!(td.metadata_optional(p)?.is_some());
+    assert!(td.symlink_metadata_optional(p)?.is_some());
+    assert!(!td.ensure_dir_with(p, b).unwrap());
+
+    let p = Utf8Path::new("somedir/without/existing-parent");
+    // We should fail because the intermediate directory doesn't exist.
+    assert!(td.ensure_dir_with(p, b).is_err());
+    // Now create the parent
+    assert!(td.ensure_dir_with(p.parent().unwrap(), b).unwrap());
+    assert!(td.ensure_dir_with(p, b).unwrap());
+    assert!(!td.ensure_dir_with(p, b).unwrap());
+
+    // Verify we don't replace a file
+    let p = Utf8Path::new("somefile");
+    td.write(p, "some file contents")?;
+    assert!(td.ensure_dir_with(p, b).is_err());
+
+    // Broken symlinks aren't followed and are errors
+    let p = Utf8Path::new("linksrc");
+    td.symlink("linkdest", p)?;
+    assert!(td.metadata(p).is_err());
+    assert!(td
+        .symlink_metadata_optional(p)
+        .unwrap()
+        .unwrap()
+        .is_symlink());
+    // Non-broken symlinks are also an error
+    assert!(td.ensure_dir_with(p, b).is_err());
+    td.create_dir("linkdest")?;
+    assert!(td.ensure_dir_with(p, b).is_err());
+    assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
+
+    Ok(())
+}

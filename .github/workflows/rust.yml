@@ -37,6 +37,9 @@ jobs:
         run: cargo build --all-targets
       - name: cargo test
         run: cargo test --all-targets
+      - name: cargo test (fs_utf8)
+        run: cargo test --features=fs_utf8
+
   tests-release-stable:
     name: Tests (release), stable toolchain
     runs-on: ubuntu-latest

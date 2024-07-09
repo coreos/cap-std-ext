@@ -8,6 +8,8 @@
 
 // Re-export our dependencies
 pub use cap_primitives;
+#[cfg(feature = "fs_utf8")]
+pub use cap_std::fs_utf8::camino;
 pub use cap_tempfile;
 pub use cap_tempfile::cap_std;
 
@@ -20,4 +22,6 @@ pub mod prelude {
     #[cfg(not(windows))]
     pub use super::cmdext::CapStdExtCommandExt;
     pub use super::dirext::CapStdExtDirExt;
+    #[cfg(feature = "fs_utf8")]
+    pub use super::dirext::CapStdExtDirExtUtf8;
 }

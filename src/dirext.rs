@@ -16,6 +16,11 @@ use std::io::{self, Write};
 use std::ops::Deref;
 use std::path::Path;
 
+#[cfg(feature = "fs_utf8")]
+use cap_std::fs_utf8;
+#[cfg(feature = "fs_utf8")]
+use fs_utf8::camino::Utf8Path;
+
 /// Extension trait for [`cap_std::fs::Dir`].
 ///
 /// [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
@@ -106,6 +111,107 @@ pub trait CapStdExtDirExt {
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
+        contents: impl AsRef<[u8]>,
+        perms: cap_std::fs::Permissions,
+    ) -> Result<()>;
+}
+
+#[cfg(feature = "fs_utf8")]
+/// Extension trait for [`cap_std::fs_utf8::Dir`].
+///
+/// [`cap_std::fs_utf8::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs_utf8/struct.Dir.html
+pub trait CapStdExtDirExtUtf8 {
+    /// Open a file read-only, but return `Ok(None)` if it does not exist.
+    fn open_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<fs_utf8::File>>;
+
+    /// Open a directory, but return `Ok(None)` if it does not exist.
+    fn open_dir_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<fs_utf8::Dir>>;
+
+    /// Create the target directory, but do nothing if a directory already exists at that path.
+    /// The return value will be `true` if the directory was created.  An error will be
+    /// returned if the path is a non-directory.  Symbolic links will be followed.
+    fn ensure_dir_with(
+        &self,
+        p: impl AsRef<Utf8Path>,
+        builder: &cap_std::fs::DirBuilder,
+    ) -> Result<bool>;
+
+    /// Gather metadata, but return `Ok(None)` if it does not exist.
+    fn metadata_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<Metadata>>;
+
+    /// Gather metadata (but do not follow symlinks), but return `Ok(None)` if it does not exist.
+    fn symlink_metadata_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<Metadata>>;
+
+    /// Remove (delete) a file, but return `Ok(false)` if the file does not exist.
+    fn remove_file_optional(&self, path: impl AsRef<Utf8Path>) -> Result<bool>;
+
+    /// Remove a file or directory but return `Ok(false)` if the file does not exist.
+    /// Symbolic links are not followed.
+    fn remove_all_optional(&self, path: impl AsRef<Utf8Path>) -> Result<bool>;
+
+    /// Set the access and modification times to the current time.  Symbolic links are not followed.
+    #[cfg(unix)]
+    fn update_timestamps(&self, path: impl AsRef<Utf8Path>) -> Result<()>;
+
+    /// Atomically write a file by calling the provided closure.
+    ///
+    /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
+    /// and passed to the closure.
+    ///
+    /// # Existing files and metadata
+    ///
+    /// If the target path already exists and is a regular file (not a symbolic link or directory),
+    /// then its access permissions (Unix mode) will be preserved.  However, other metadata
+    /// such as extended attributes will *not* be preserved automatically.  To do this will
+    /// require a higher level wrapper which queries the existing file and gathers such metadata
+    /// before replacement.
+    ///
+    /// # Example, including setting permissions
+    ///
+    /// The closure may also perform other file operations beyond writing, such as changing
+    /// file permissions:
+    ///
+    /// ```rust
+    /// # use std::io;
+    /// # use std::io::Write;
+    /// # use cap_tempfile::cap_std;
+    /// # fn main() -> io::Result<()> {
+    /// # let somedir = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+    /// # let somedir = cap_std::fs_utf8::Dir::from_cap_std((&*somedir).try_clone()?);
+    /// use cap_std_ext::prelude::*;
+    /// let contents = b"hello world\n";
+    /// somedir.atomic_replace_with("somefilename", |f| -> io::Result<_> {
+    ///     f.write_all(contents)?;
+    ///     f.flush()?;
+    ///     use cap_std::fs::PermissionsExt;
+    ///     let perms = cap_std::fs::Permissions::from_mode(0o600);
+    ///     f.get_mut().as_file_mut().set_permissions(perms)?;
+    ///     Ok(())
+    /// })
+    /// # }
+    /// ```
+    ///
+    /// Any existing file will be replaced.
+    fn atomic_replace_with<F, T, E>(
+        &self,
+        destname: impl AsRef<Utf8Path>,
+        f: F,
+    ) -> std::result::Result<T, E>
+    where
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
+        E: From<std::io::Error>;
+
+    /// Atomically write the provided contents to a file.
+    fn atomic_write(
+        &self,
+        destname: impl AsRef<Utf8Path>,
+        contents: impl AsRef<[u8]>,
+    ) -> Result<()>;
+
+    /// Atomically write the provided contents to a file, using specified permissions.
+    fn atomic_write_with_perms(
+        &self,
+        destname: impl AsRef<Utf8Path>,
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()>;
@@ -308,5 +414,86 @@ impl CapStdExtDirExt for Dir {
             f.get_mut().as_file_mut().set_permissions(perms)?;
             Ok(())
         })
+    }
+}
+
+// Implementation for the Utf8 variant of Dir. You shouldn't need to add
+// any real logic here, just delegate to the non-UTF8 version via `as_cap_std()`
+// in general.
+#[cfg(feature = "fs_utf8")]
+impl CapStdExtDirExtUtf8 for cap_std::fs_utf8::Dir {
+    fn open_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<fs_utf8::File>> {
+        map_optional(self.open(path.as_ref()))
+    }
+
+    fn open_dir_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<fs_utf8::Dir>> {
+        map_optional(self.open_dir(path.as_ref()))
+    }
+
+    fn ensure_dir_with(
+        &self,
+        p: impl AsRef<Utf8Path>,
+        builder: &cap_std::fs::DirBuilder,
+    ) -> Result<bool> {
+        self.as_cap_std()
+            .ensure_dir_with(p.as_ref().as_std_path(), builder)
+    }
+
+    fn metadata_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<Metadata>> {
+        self.as_cap_std()
+            .metadata_optional(path.as_ref().as_std_path())
+    }
+
+    fn symlink_metadata_optional(&self, path: impl AsRef<Utf8Path>) -> Result<Option<Metadata>> {
+        self.as_cap_std()
+            .symlink_metadata_optional(path.as_ref().as_std_path())
+    }
+
+    fn remove_file_optional(&self, path: impl AsRef<Utf8Path>) -> Result<bool> {
+        self.as_cap_std()
+            .remove_file_optional(path.as_ref().as_std_path())
+    }
+
+    fn remove_all_optional(&self, path: impl AsRef<Utf8Path>) -> Result<bool> {
+        self.as_cap_std()
+            .remove_all_optional(path.as_ref().as_std_path())
+    }
+
+    #[cfg(unix)]
+    fn update_timestamps(&self, path: impl AsRef<Utf8Path>) -> Result<()> {
+        self.as_cap_std()
+            .update_timestamps(path.as_ref().as_std_path())
+    }
+
+    fn atomic_replace_with<F, T, E>(
+        &self,
+        destname: impl AsRef<Utf8Path>,
+        f: F,
+    ) -> std::result::Result<T, E>
+    where
+        F: FnOnce(&mut std::io::BufWriter<cap_tempfile::TempFile>) -> std::result::Result<T, E>,
+        E: From<std::io::Error>,
+    {
+        self.as_cap_std()
+            .atomic_replace_with(destname.as_ref().as_std_path(), f)
+    }
+
+    fn atomic_write(
+        &self,
+        destname: impl AsRef<Utf8Path>,
+        contents: impl AsRef<[u8]>,
+    ) -> Result<()> {
+        self.as_cap_std()
+            .atomic_write(destname.as_ref().as_std_path(), contents)
+    }
+
+    fn atomic_write_with_perms(
+        &self,
+        destname: impl AsRef<Utf8Path>,
+        contents: impl AsRef<[u8]>,
+        perms: cap_std::fs::Permissions,
+    ) -> Result<()> {
+        self.as_cap_std()
+            .atomic_write_with_perms(destname.as_ref().as_std_path(), contents, perms)
     }
 }
