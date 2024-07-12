@@ -31,6 +31,11 @@ pub trait CapStdExtDirExt {
     /// Open a directory, but return `Ok(None)` if it does not exist.
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>>;
 
+    /// Create a special variant of [`cap_std::fs::Dir`] which uses `RESOLVE_IN_ROOT`
+    /// to support absolute symlinks.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn open_dir_rooted_ext(&self, path: impl AsRef<Path>) -> Result<crate::RootDir>;
+
     /// Create the target directory, but do nothing if a directory already exists at that path.
     /// The return value will be `true` if the directory was created.  An error will be
     /// returned if the path is a non-directory.  Symbolic links will be followed.
@@ -244,7 +249,7 @@ pub trait CapStdExtDirExtUtf8 {
         C: FnMut(&str, &str) -> std::cmp::Ordering;
 }
 
-fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
+pub(crate) fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
     match r {
         Ok(v) => Ok(Some(v)),
         Err(e) => {
@@ -302,6 +307,11 @@ impl CapStdExtDirExt for Dir {
 
     fn open_dir_optional(&self, path: impl AsRef<Path>) -> Result<Option<Dir>> {
         map_optional(self.open_dir(path.as_ref()))
+    }
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn open_dir_rooted_ext(&self, path: impl AsRef<Path>) -> Result<crate::RootDir> {
+        crate::RootDir::new(self, path)
     }
 
     fn ensure_dir_with(

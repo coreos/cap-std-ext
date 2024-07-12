@@ -1,9 +1,9 @@
 use anyhow::Result;
 
 use cap_std::fs::{Dir, File, Permissions, PermissionsExt};
-use cap_std_ext::cap_std;
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::CapStdExtDirExt;
+use cap_std_ext::{cap_std, RootDir};
 use std::io::Write;
 use std::path::Path;
 use std::{process::Command, sync::Arc};
@@ -337,5 +337,49 @@ fn filenames_utf8() -> Result<()> {
     for name in names.iter() {
         assert!(!name.starts_with('.'));
     }
+    Ok(())
+}
+
+#[test]
+fn test_rootdir_open() -> Result<()> {
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+    let root = RootDir::new(td, ".").unwrap();
+
+    assert!(root.open_optional("foo").unwrap().is_none());
+
+    td.create_dir("etc")?;
+    td.create_dir_all("usr/lib")?;
+
+    let authjson = "usr/lib/auth.json";
+    assert!(root.open(authjson).is_err());
+    assert!(root.open_optional(authjson).unwrap().is_none());
+    td.write(authjson, "auth contents")?;
+    assert!(root.open_optional(authjson).unwrap().is_some());
+    let contents = root.read_to_string(authjson).unwrap();
+    assert_eq!(&contents, "auth contents");
+
+    td.symlink_contents("/usr/lib/auth.json", "etc/auth.json")?;
+
+    let contents = root.read_to_string("/etc/auth.json").unwrap();
+    assert_eq!(&contents, "auth contents");
+
+    // But this should fail due to an escape
+    assert!(td.read_to_string("etc/auth.json").is_err());
+    Ok(())
+}
+
+#[test]
+fn test_rootdir_entries() -> Result<()> {
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+    let root = RootDir::new(td, ".").unwrap();
+
+    td.create_dir("etc")?;
+    td.create_dir_all("usr/lib")?;
+
+    let ents = root
+        .entries()
+        .unwrap()
+        .collect::<std::io::Result<Vec<_>>>()?;
+    assert_eq!(ents.len(), 2);
     Ok(())
 }
