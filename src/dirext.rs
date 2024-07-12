@@ -215,6 +215,33 @@ pub trait CapStdExtDirExtUtf8 {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()>;
+
+    /// Read all filenames in this directory, sorted
+    fn filenames_sorted(&self) -> Result<Vec<String>> {
+        self.filenames_sorted_by(|a, b| a.cmp(b))
+    }
+
+    /// Read all filenames in this directory, sorted by the provided comparison function.
+    fn filenames_sorted_by<C>(&self, compare: C) -> Result<Vec<String>>
+    where
+        C: FnMut(&str, &str) -> std::cmp::Ordering,
+    {
+        self.filenames_filtered_sorted_by(|_, _| true, compare)
+    }
+
+    /// Read all filenames in this directory, applying a filter and sorting the result.
+    fn filenames_filtered_sorted<F>(&self, f: F) -> Result<Vec<String>>
+    where
+        F: FnMut(&fs_utf8::DirEntry, &str) -> bool,
+    {
+        self.filenames_filtered_sorted_by(f, |a, b| a.cmp(b))
+    }
+
+    /// Read all filenames in this directory, applying a filter and sorting the result with a custom comparison function.
+    fn filenames_filtered_sorted_by<F, C>(&self, f: F, compare: C) -> Result<Vec<String>>
+    where
+        F: FnMut(&fs_utf8::DirEntry, &str) -> bool,
+        C: FnMut(&str, &str) -> std::cmp::Ordering;
 }
 
 fn map_optional<R>(r: Result<R>) -> Result<Option<R>> {
@@ -495,5 +522,24 @@ impl CapStdExtDirExtUtf8 for cap_std::fs_utf8::Dir {
     ) -> Result<()> {
         self.as_cap_std()
             .atomic_write_with_perms(destname.as_ref().as_std_path(), contents, perms)
+    }
+
+    fn filenames_filtered_sorted_by<F, C>(&self, mut f: F, mut compare: C) -> Result<Vec<String>>
+    where
+        F: FnMut(&fs_utf8::DirEntry, &str) -> bool,
+        C: FnMut(&str, &str) -> std::cmp::Ordering,
+    {
+        let mut r =
+            self.entries()?
+                .try_fold(Vec::new(), |mut acc, ent| -> Result<Vec<String>> {
+                    let ent = ent?;
+                    let name = ent.file_name()?;
+                    if f(&ent, name.as_str()) {
+                        acc.push(name);
+                    }
+                    Ok(acc)
+                })?;
+        r.sort_by(|a, b| compare(a.as_str(), b.as_str()));
+        Ok(r)
     }
 }

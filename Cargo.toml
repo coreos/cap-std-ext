@@ -19,6 +19,7 @@ rustix = { version = "0.38", features = ["fs", "procfs", "process", "pipe"] }
 
 [dev-dependencies]
 anyhow = "1.0"
+uuid = "1.10"
 
 [features]
 default = []

@@ -305,3 +305,37 @@ fn ensuredir_utf8() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+#[cfg(feature = "fs_utf8")]
+fn filenames_utf8() -> Result<()> {
+    use std::collections::BTreeSet;
+
+    use cap_std_ext::dirext::CapStdExtDirExtUtf8;
+    let td = &cap_tempfile::utf8::TempDir::new(cap_std::ambient_authority())?;
+
+    let mut expected = BTreeSet::new();
+    const N: usize = 20;
+    (0..N).try_for_each(|_| -> Result<()> {
+        let fname = uuid::Uuid::new_v4().to_string();
+
+        td.write(&fname, &fname)?;
+        expected.insert(fname);
+        Ok(())
+    })?;
+    let names = td.filenames_sorted().unwrap();
+    for (a, b) in expected.iter().zip(names.iter()) {
+        assert_eq!(a, b);
+    }
+
+    td.create_dir(".foo").unwrap();
+
+    let names = td
+        .filenames_filtered_sorted(|_ent, name| !name.starts_with('.'))
+        .unwrap();
+    assert_eq!(names.len(), N);
+    for name in names.iter() {
+        assert!(!name.starts_with('.'));
+    }
+    Ok(())
+}
