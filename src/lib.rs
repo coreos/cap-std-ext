@@ -17,6 +17,10 @@ pub use cap_tempfile::cap_std;
 pub mod cmdext;
 pub mod dirext;
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
+mod rootdir;
+pub use rootdir::*;
+
 /// Prelude, intended for glob import.
 pub mod prelude {
     #[cfg(not(windows))]
