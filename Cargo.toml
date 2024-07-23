@@ -16,6 +16,7 @@ cap-primitives = "3"
 
 [target.'cfg(not(windows))'.dependencies]
 rustix = { version = "0.38", features = ["fs", "procfs", "process", "pipe"] }
+libc = "0.2"
 
 [dev-dependencies]
 anyhow = "1.0"
