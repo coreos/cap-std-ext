@@ -119,6 +119,14 @@ pub trait CapStdExtDirExt {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()>;
+
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    /// Returns `Some(true)` if the target is known to be a mountpoint, or
+    /// `Some(false)` if the target is definitively known not to be a mountpoint.
+    ///
+    /// In some scenarios (such as an older kernel) this currently may not be possible
+    /// to determine, and `None` will be returned in those cases.
+    fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>>;
 }
 
 #[cfg(feature = "fs_utf8")]
@@ -300,6 +308,28 @@ fn subdir_of<'d, 'p>(d: &'d Dir, p: &'p Path) -> io::Result<(DirOwnedOrBorrowed<
     Ok((r, name))
 }
 
+fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
+    // https://github.com/systemd/systemd/blob/8fbf0a214e2fe474655b17a4b663122943b55db0/src/basic/mountpoint-util.c#L176
+    use rustix::fs::{AtFlags, StatxFlags};
+    use std::os::fd::AsFd;
+
+    // SAFETY(unwrap): We can infallibly convert an i32 into a u64.
+    let mountroot_flag: u64 = libc::STATX_ATTR_MOUNT_ROOT.try_into().unwrap();
+    match rustix::fs::statx(
+        root.as_fd(),
+        path,
+        AtFlags::NO_AUTOMOUNT | AtFlags::SYMLINK_NOFOLLOW,
+        StatxFlags::empty(),
+    ) {
+        Ok(r) => {
+            let present = (r.stx_attributes_mask & mountroot_flag) > 0;
+            Ok(present.then_some(r.stx_attributes & mountroot_flag > 0))
+        }
+        Err(e) if e == rustix::io::Errno::NOSYS => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 impl CapStdExtDirExt for Dir {
     fn open_optional(&self, path: impl AsRef<Path>) -> Result<Option<File>> {
         map_optional(self.open(path.as_ref()))
@@ -451,6 +481,10 @@ impl CapStdExtDirExt for Dir {
             f.get_mut().as_file_mut().set_permissions(perms)?;
             Ok(())
         })
+    }
+
+    fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>> {
+        is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
     }
 }
 

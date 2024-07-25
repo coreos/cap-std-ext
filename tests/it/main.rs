@@ -383,3 +383,12 @@ fn test_rootdir_entries() -> Result<()> {
     assert_eq!(ents.len(), 2);
     Ok(())
 }
+
+#[test]
+fn test_mountpoint() -> Result<()> {
+    let root = &Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
+    assert_eq!(root.is_mountpoint(".").unwrap(), Some(true));
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+    assert_eq!(td.is_mountpoint(".").unwrap(), Some(false));
+    Ok(())
+}
