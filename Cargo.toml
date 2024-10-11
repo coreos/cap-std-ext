@@ -8,7 +8,7 @@ name = "cap-std-ext"
 readme = "README.md"
 repository = "https://github.com/coreos/cap-std-ext"
 # For historical reasons, the major version number is one greater than the cap-std major.
-version = "4.0.2"
+version = "4.0.3"
 
 [dependencies]
 cap-tempfile = "3.2.0"
