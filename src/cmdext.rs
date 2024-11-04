@@ -68,7 +68,7 @@ mod tests {
     #[test]
     fn test_take_fdn() -> anyhow::Result<()> {
         // Pass srcfd == destfd and srcfd != destfd
-        for i in 0..1 {
+        for i in 0..=1 {
             let tempd = cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
             let tempd_fd = Arc::new(tempd.as_fd().try_clone_to_owned()?);
             let n = tempd_fd.as_raw_fd() + i;
