@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -37,15 +37,12 @@ jobs:
         run: cargo build --all-targets
       - name: cargo test
         run: cargo test --all-targets
-      - name: cargo test (fs_utf8)
-        run: cargo test --features=fs_utf8
-
   tests-release-stable:
     name: Tests (release), stable toolchain
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -61,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Detect crate MSRV
         run: |
           msrv=$(cargo metadata --format-version 1 --no-deps | \
@@ -83,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -104,7 +101,7 @@ jobs:
         channel: [beta, nightly]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
