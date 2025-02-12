@@ -10,6 +10,7 @@
 
 use cap_std::fs::{Dir, File, Metadata};
 use cap_tempfile::cap_std;
+use rustix::path::Arg;
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
@@ -35,6 +36,10 @@ pub trait CapStdExtDirExt {
     /// to support absolute symlinks.
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn open_dir_rooted_ext(&self, path: impl AsRef<Path>) -> Result<crate::RootDir>;
+
+    /// Open the target directory, but return Ok(None) if this would cross a mount point.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn open_dir_noxdev(&self, path: impl AsRef<Path>) -> Result<Option<Dir>>;
 
     /// Create the target directory, but do nothing if a directory already exists at that path.
     /// The return value will be `true` if the directory was created.  An error will be
@@ -308,6 +313,33 @@ fn subdir_of<'d, 'p>(d: &'d Dir, p: &'p Path) -> io::Result<(DirOwnedOrBorrowed<
     Ok((r, name))
 }
 
+/// A thin wrapper for [`openat2`] but that retries on interruption.
+fn openat2_with_retry(
+    dirfd: impl std::os::fd::AsFd,
+    path: impl AsRef<Path>,
+    oflags: rustix::fs::OFlags,
+    mode: rustix::fs::Mode,
+    resolve: rustix::fs::ResolveFlags,
+) -> rustix::io::Result<std::os::fd::OwnedFd> {
+    let dirfd = dirfd.as_fd();
+    let path = path.as_ref();
+    // We loop forever on EAGAIN right now. The cap-std version loops just 4 times,
+    // which seems really arbitrary.
+    path.into_with_c_str(|path_c_str| 'start: loop {
+        match rustix::fs::openat2(dirfd, path_c_str, oflags, mode, resolve) {
+            Ok(file) => {
+                return Ok(file);
+            }
+            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => {
+                continue 'start;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    })
+}
+
 fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
     // https://github.com/systemd/systemd/blob/8fbf0a214e2fe474655b17a4b663122943b55db0/src/basic/mountpoint-util.c#L176
     use rustix::fs::{AtFlags, StatxFlags};
@@ -342,6 +374,23 @@ impl CapStdExtDirExt for Dir {
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn open_dir_rooted_ext(&self, path: impl AsRef<Path>) -> Result<crate::RootDir> {
         crate::RootDir::new(self, path)
+    }
+
+    /// Open the target directory, but return Ok(None) if this would cross a mount point.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    fn open_dir_noxdev(&self, path: impl AsRef<std::path::Path>) -> std::io::Result<Option<Dir>> {
+        use rustix::fs::{Mode, OFlags, ResolveFlags};
+        match openat2_with_retry(
+            self,
+            path,
+            OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::NOFOLLOW,
+            Mode::empty(),
+            ResolveFlags::NO_XDEV | ResolveFlags::BENEATH,
+        ) {
+            Ok(r) => Ok(Some(Dir::reopen_dir(&r)?)),
+            Err(e) if e == rustix::io::Errno::XDEV => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 
     fn ensure_dir_with(

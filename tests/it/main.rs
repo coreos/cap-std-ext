@@ -392,3 +392,15 @@ fn test_mountpoint() -> Result<()> {
     assert_eq!(td.is_mountpoint(".").unwrap(), Some(false));
     Ok(())
 }
+
+#[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
+fn test_open_noxdev() -> Result<()> {
+    let root = Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
+    // This hard requires the host setup to have /usr/bin on the same filesystem as /
+    let usr = Dir::open_ambient_dir("/usr", cap_std::ambient_authority())?;
+    assert!(usr.open_dir_noxdev("bin").unwrap().is_some());
+    // Requires a mounted /proc, but that also seems ane.
+    assert!(root.open_dir_noxdev("proc").unwrap().is_none());
+    Ok(())
+}
