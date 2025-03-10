@@ -351,11 +351,11 @@ fn openat2_with_retry(
 
 fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
     // https://github.com/systemd/systemd/blob/8fbf0a214e2fe474655b17a4b663122943b55db0/src/basic/mountpoint-util.c#L176
+    use rustix::fs::StatxAttributes;
     use rustix::fs::{AtFlags, StatxFlags};
     use std::os::fd::AsFd;
 
     // SAFETY(unwrap): We can infallibly convert an i32 into a u64.
-    let mountroot_flag: u64 = libc::STATX_ATTR_MOUNT_ROOT.try_into().unwrap();
     match rustix::fs::statx(
         root.as_fd(),
         path,
@@ -363,8 +363,8 @@ fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
         StatxFlags::empty(),
     ) {
         Ok(r) => {
-            let present = (r.stx_attributes_mask & mountroot_flag) > 0;
-            Ok(present.then_some(r.stx_attributes & mountroot_flag > 0))
+            let present = r.stx_attributes_mask.contains(StatxAttributes::MOUNT_ROOT);
+            Ok(present.then_some(r.stx_attributes.contains(StatxAttributes::MOUNT_ROOT)))
         }
         Err(e) if e == rustix::io::Errno::NOSYS => Ok(None),
         Err(e) => Err(e.into()),
