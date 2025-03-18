@@ -15,6 +15,7 @@ use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
 use std::ops::Deref;
+use std::os::fd::OwnedFd;
 use std::path::Path;
 
 #[cfg(feature = "fs_utf8")]
@@ -124,6 +125,14 @@ pub trait CapStdExtDirExt {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()>;
+
+    /// By default, cap-std `Dir` instances are opened using `O_PATH`.
+    /// There are some operations such as `fsync` and `fsetxattr` that
+    /// cannot be performed on `O_PATH` file descriptors. Use this
+    /// function to create a non-`O_PATH` copy of the directory
+    /// file descriptor.
+    #[cfg(unix)]
+    fn reopen_as_ownedfd(&self) -> Result<OwnedFd>;
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     /// Returns `Some(true)` if the target is known to be a mountpoint, or
@@ -530,6 +539,19 @@ impl CapStdExtDirExt for Dir {
             f.get_mut().as_file_mut().set_permissions(perms)?;
             Ok(())
         })
+    }
+
+    #[cfg(unix)]
+    fn reopen_as_ownedfd(&self) -> Result<OwnedFd> {
+        use rustix::fs::{Mode, OFlags};
+        use std::os::fd::AsFd;
+        rustix::fs::openat(
+            self.as_fd(),
+            ".",
+            OFlags::CLOEXEC | OFlags::DIRECTORY | OFlags::RDONLY,
+            Mode::empty(),
+        )
+        .map_err(Into::into)
     }
 
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>> {

@@ -394,6 +394,15 @@ fn test_mountpoint() -> Result<()> {
 }
 
 #[test]
+#[cfg(unix)]
+fn test_reopen_as_ownedfd() -> Result<()> {
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+    let fd = td.reopen_as_ownedfd()?;
+    rustix::fs::fsync(fd)?;
+    Ok(())
+}
+
+#[test]
 #[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_open_noxdev() -> Result<()> {
     let root = Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
