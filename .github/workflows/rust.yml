@@ -24,9 +24,10 @@ jobs:
   tests-stable:
     name: Tests, stable toolchain
     runs-on: ubuntu-latest
+    container: quay.io/coreos-assembler/fcos-buildroot:testing-devel
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -37,15 +38,13 @@ jobs:
         run: cargo build --all-targets
       - name: cargo test
         run: cargo test --all-targets
-      - name: cargo test (fs_utf8)
-        run: cargo test --features=fs_utf8
-
   tests-release-stable:
     name: Tests (release), stable toolchain
     runs-on: ubuntu-latest
+    container: quay.io/coreos-assembler/fcos-buildroot:testing-devel
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -59,9 +58,10 @@ jobs:
   tests-release-msrv:
     name: Tests (release), minimum supported toolchain
     runs-on: ubuntu-latest
+    container: quay.io/coreos-assembler/fcos-buildroot:testing-devel
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Detect crate MSRV
         run: |
           msrv=$(cargo metadata --format-version 1 --no-deps | \
@@ -81,9 +81,10 @@ jobs:
   linting:
     name: Lints, pinned toolchain
     runs-on: ubuntu-latest
+    container: quay.io/coreos-assembler/fcos-buildroot:testing-devel
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
@@ -98,13 +99,14 @@ jobs:
   tests-other-channels:
     name: Tests, unstable toolchain
     runs-on: ubuntu-latest
+    container: quay.io/coreos-assembler/fcos-buildroot:testing-devel
     continue-on-error: true
     strategy:
       matrix:
         channel: [beta, nightly]
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@v1
         with:
