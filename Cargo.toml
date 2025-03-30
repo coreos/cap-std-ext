@@ -15,7 +15,7 @@ cap-tempfile = "3.2.0"
 cap-primitives = "3"
 
 [target.'cfg(not(windows))'.dependencies]
-rustix = { version = "0.38", features = ["fs", "procfs", "process", "pipe"] }
+rustix = { version = "1.0", features = ["fs", "process", "pipe"] }
 libc = "0.2"
 
 [dev-dependencies]
