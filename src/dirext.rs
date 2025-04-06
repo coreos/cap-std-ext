@@ -226,6 +226,24 @@ pub trait CapStdExtDirExt {
     /// to determine, and `None` will be returned in those cases.
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>>;
 
+    #[cfg(not(windows))]
+    /// Get the value of an extended attribute. If the attribute is not present,
+    /// this function will return `Ok(None)`.
+    fn getxattr(&self, path: impl AsRef<Path>, key: impl AsRef<OsStr>) -> Result<Option<Vec<u8>>>;
+
+    #[cfg(not(windows))]
+    /// List all extended attribute keys for this path.
+    fn listxattrs(&self, path: impl AsRef<Path>) -> Result<crate::XattrList>;
+
+    #[cfg(not(windows))]
+    /// Set the value of an extended attribute.
+    fn setxattr(
+        &self,
+        path: impl AsRef<Path>,
+        key: impl AsRef<OsStr>,
+        value: impl AsRef<[u8]>,
+    ) -> Result<()>;
+
     /// Recursively walk a directory. If the function returns [`std::ops::ControlFlow::Break`]
     /// while inspecting a directory, traversal of that directory is skipped. If
     /// [`std::ops::ControlFlow::Break`] is returned when inspecting a non-directory,
@@ -562,6 +580,20 @@ where
     Ok(())
 }
 
+// Ensure that the target path isn't absolute, and doesn't
+// have any parent references.
+pub(crate) fn validate_relpath_no_uplinks(path: &Path) -> Result<&Path> {
+    let is_absolute = path.is_absolute();
+    let contains_uplinks = path
+        .components()
+        .any(|e| e == std::path::Component::ParentDir);
+    if is_absolute || contains_uplinks {
+        Err(crate::escape_attempt())
+    } else {
+        Ok(path)
+    }
+}
+
 impl CapStdExtDirExt for Dir {
     fn open_optional(&self, path: impl AsRef<Path>) -> Result<Option<File>> {
         map_optional(self.open(path.as_ref()))
@@ -738,6 +770,26 @@ impl CapStdExtDirExt for Dir {
         is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
     }
 
+    #[cfg(not(windows))]
+    fn getxattr(&self, path: impl AsRef<Path>, key: impl AsRef<OsStr>) -> Result<Option<Vec<u8>>> {
+        crate::xattrs::impl_getxattr(self, path.as_ref(), key.as_ref())
+    }
+
+    #[cfg(not(windows))]
+    fn listxattrs(&self, path: impl AsRef<Path>) -> Result<crate::XattrList> {
+        crate::xattrs::impl_listxattrs(self, path.as_ref())
+    }
+
+    #[cfg(not(windows))]
+    fn setxattr(
+        &self,
+        path: impl AsRef<Path>,
+        key: impl AsRef<OsStr>,
+        value: impl AsRef<[u8]>,
+    ) -> Result<()> {
+        crate::xattrs::impl_setxattr(self, path.as_ref(), key.as_ref(), value.as_ref())
+    }
+
     fn walk<C, E>(&self, config: &WalkConfiguration, mut callback: C) -> std::result::Result<(), E>
     where
         C: FnMut(&WalkComponent) -> WalkResult<E>,
@@ -849,5 +901,25 @@ impl CapStdExtDirExtUtf8 for cap_std::fs_utf8::Dir {
                 })?;
         r.sort_by(|a, b| compare(a.as_str(), b.as_str()));
         Ok(r)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn test_validate_relpath_no_uplinks() {
+        let ok_cases = ["foo", "foo/bar", "foo/bar/"];
+        let err_cases = ["/foo", "/", "../foo", "foo/../bar"];
+
+        for case in ok_cases {
+            assert!(validate_relpath_no_uplinks(Path::new(case)).is_ok());
+        }
+        for case in err_cases {
+            assert!(validate_relpath_no_uplinks(Path::new(case)).is_err());
+        }
     }
 }
