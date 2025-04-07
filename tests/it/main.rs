@@ -568,3 +568,78 @@ fn test_walk_noxdev() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+#[cfg(not(windows))]
+fn test_xattrs() -> Result<()> {
+    use std::os::unix::ffi::OsStrExt;
+
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+
+    assert!(td.getxattr(".", "user.test").unwrap().is_none());
+    td.setxattr(".", "user.test", "somevalue").unwrap();
+    assert_eq!(
+        td.getxattr(".", "user.test").unwrap().unwrap(),
+        b"somevalue"
+    );
+    // Helper fn to list only user. xattrs - filter out especially
+    // system xattrs like security.selinux which may be synthesized by the OS
+    fn list_user_xattrs(d: &Dir, p: impl AsRef<Path>) -> Vec<std::ffi::OsString> {
+        let attrs = d.listxattrs(p).unwrap();
+        attrs
+            .iter()
+            .filter(|k| {
+                let Some(k) = k.to_str() else {
+                    return false;
+                };
+                k.split_once('.').unwrap().0 == "user"
+            })
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>()
+    }
+    match list_user_xattrs(td, ".").as_slice() {
+        [] => unreachable!(),
+        [v] => assert_eq!(v.as_bytes(), b"user.test"),
+        _ => unreachable!(),
+    };
+
+    // Test multiple xattrs
+    td.setxattr(".", "user.othertest", b"anothervalue").unwrap();
+    assert_eq!(list_user_xattrs(td, ".").len(), 2);
+
+    // Test operating on a subdirectory file
+    td.create_dir_all("foo/bar/baz")?;
+    let p = "foo/bar/baz/subfile";
+    td.write(p, "afile")?;
+    td.setxattr(p, "user.filetest", b"filexattr").unwrap();
+    assert_eq!(
+        td.getxattr(p, "user.filetest").unwrap().unwrap(),
+        b"filexattr"
+    );
+    match list_user_xattrs(td, p).as_slice() {
+        [v] => assert_eq!(v.as_bytes(), b"user.filetest"),
+        _ => unreachable!(),
+    };
+
+    // Test listing xattrs on a broken symlink. We can't set user.
+    // xattrs on a symlink, so we don't test that in unit tests.
+    let p = "foo/bar/baz/somelink";
+    td.symlink("enoent", p)?;
+    assert!(list_user_xattrs(td, p).is_empty());
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_big_xattr() -> Result<()> {
+    let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
+
+    let bigbuf = b"x".repeat(4000);
+    td.setxattr(".", "user.test", &bigbuf).unwrap();
+    let v = td.getxattr(".", "user.test").unwrap().unwrap();
+    assert_eq!(bigbuf.len(), v.len());
+    assert_eq!(bigbuf, v);
+
+    Ok(())
+}

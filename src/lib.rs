@@ -5,6 +5,8 @@
 #![forbid(unused_must_use)]
 #![deny(unsafe_code)]
 
+use std::io;
+
 // Re-export our dependencies
 pub use cap_primitives;
 #[cfg(feature = "fs_utf8")]
@@ -18,7 +20,20 @@ pub mod dirext;
 
 #[cfg(any(target_os = "android", target_os = "linux"))]
 mod rootdir;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use rootdir::*;
+#[cfg(not(windows))]
+mod xattrs;
+#[cfg(not(windows))]
+pub use xattrs::XattrList;
+
+#[cold]
+pub(crate) fn escape_attempt() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "a path led outside of the filesystem",
+    )
+}
 
 /// Prelude, intended for glob import.
 pub mod prelude {
