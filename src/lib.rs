@@ -4,7 +4,6 @@
 #![deny(missing_debug_implementations)]
 #![forbid(unused_must_use)]
 #![deny(unsafe_code)]
-#![cfg_attr(feature = "dox", feature(doc_cfg))]
 
 // Re-export our dependencies
 pub use cap_primitives;
