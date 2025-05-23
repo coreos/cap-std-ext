@@ -164,13 +164,13 @@ fn default_mode(d: &Dir) -> Result<Permissions> {
 fn link_tempfile_with() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     let p = Path::new("foo");
-    td.atomic_replace_with(p, |f| writeln!(f, "hello world"))
+    td.atomic_replace_with(p, None, |f| writeln!(f, "hello world"))
         .unwrap();
     assert_eq!(td.read_to_string(p).unwrap().as_str(), "hello world\n");
     let default_perms = default_mode(&td)?;
     assert_eq!(td.metadata(p)?.permissions(), default_perms);
 
-    td.atomic_replace_with(p, |f| writeln!(f, "atomic replacement"))
+    td.atomic_replace_with(p, None, |f| writeln!(f, "atomic replacement"))
         .unwrap();
     assert_eq!(
         td.read_to_string(p).unwrap().as_str(),
@@ -178,7 +178,7 @@ fn link_tempfile_with() -> Result<()> {
     );
 
     let e = td
-        .atomic_replace_with(p, |f| {
+        .atomic_replace_with(p, None, |f| {
             writeln!(f, "should not be written")?;
             Err::<(), _>(std::io::Error::new(std::io::ErrorKind::Other, "oops"))
         })
@@ -238,6 +238,16 @@ fn link_tempfile_with() -> Result<()> {
     td.atomic_write_with_perms(p, "self-only file v3", Permissions::from_mode(0o640))
         .unwrap();
     assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o640);
+    // Write a file with mode 000
+    td.atomic_write_with_perms(p, "no permissions", Permissions::from_mode(0o000))
+        .unwrap();
+    let metadata = td.metadata(p).unwrap();
+    assert_eq!(metadata.permissions().mode() & 0o777, 0o000);
+    assert_eq!(metadata.len(), 14);
+    // Replace a file with mode 000
+    td.atomic_write_with_perms(p, "600", Permissions::from_mode(0o600))
+        .unwrap();
+    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
     Ok(())
 }
 
@@ -245,7 +255,7 @@ fn link_tempfile_with() -> Result<()> {
 fn test_timestamps() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     let p = Path::new("foo");
-    td.atomic_replace_with(p, |f| writeln!(f, "hello world"))
+    td.atomic_replace_with(p, None, |f| writeln!(f, "hello world"))
         .unwrap();
     let ts0 = td.metadata(p)?.modified()?;
     // This test assumes at least second granularity on filesystem timestamps, and
