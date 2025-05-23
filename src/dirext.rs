@@ -157,11 +157,18 @@ pub trait CapStdExtDirExt {
     /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
     /// and passed to the closure.
     ///
+    /// # Atomicity
+    ///
+    /// The function takes care of:
+    /// - flushing the BufWriter
+    /// - calling sync_all() on the TempFile
+    /// - calling sync_all() on the parent directory (after the rename)
+    ///
     /// # Existing files and metadata
     ///
     /// If the target path already exists and is a regular file (not a symbolic link or directory),
     /// then its access permissions (Unix mode) will be preserved.  However, other metadata
-    /// such as extended attributes will *not* be preserved automatically.  To do this will
+    /// such as extended attributes will *not* be preserved automatically. To do this will
     /// require a higher level wrapper which queries the existing file and gathers such metadata
     /// before replacement.
     ///
@@ -296,11 +303,18 @@ pub trait CapStdExtDirExtUtf8 {
     /// This uses [`cap_tempfile::TempFile`], which is wrapped in a [`std::io::BufWriter`]
     /// and passed to the closure.
     ///
+    /// # Atomicity
+    ///
+    /// The function takes care of:
+    /// - flushing the BufWriter
+    /// - calling sync_all() on the TempFile
+    /// - calling sync_all() on the parent directory (after the rename)
+    ///
     /// # Existing files and metadata
     ///
     /// If the target path already exists and is a regular file (not a symbolic link or directory),
     /// then its access permissions (Unix mode) will be preserved.  However, other metadata
-    /// such as extended attributes will *not* be preserved automatically.  To do this will
+    /// such as extended attributes will *not* be preserved automatically. To do this will
     /// require a higher level wrapper which queries the existing file and gathers such metadata
     /// before replacement.
     ///
@@ -719,10 +733,14 @@ impl CapStdExtDirExt for Dir {
         let mut bufw = std::io::BufWriter::new(t);
         // Call the provided closure to generate the file content
         let r = f(&mut bufw)?;
-        // Flush the buffer, and rename the temporary file into place
-        bufw.into_inner()
-            .map_err(From::from)
-            .and_then(|t| t.replace(name))?;
+        // Flush the buffer, get the TempFile
+        t = bufw.into_inner().map_err(From::from)?;
+        // fsync the TempFile
+        t.as_file().sync_all()?;
+        // rename the TempFile
+        t.replace(name)?;
+        // fsync the directory
+        d.open(".")?.sync_all()?;
         Ok(r)
     }
 
