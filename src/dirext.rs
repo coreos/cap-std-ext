@@ -9,6 +9,8 @@
 //! [`cap_std::fs::Dir`]: https://docs.rs/cap-std/latest/cap_std/fs/struct.Dir.html
 
 use cap_primitives::fs::FileType;
+#[cfg(unix)]
+use cap_primitives::fs::MetadataExt;
 use cap_std::fs::{Dir, File, Metadata};
 use cap_tempfile::cap_std;
 use cap_tempfile::cap_std::fs::DirEntry;
@@ -172,25 +174,26 @@ pub trait CapStdExtDirExt {
     /// require a higher level wrapper which queries the existing file and gathers such metadata
     /// before replacement.
     ///
-    /// # Example, including setting permissions
+    /// # Security
     ///
-    /// The closure may also perform other file operations beyond writing, such as changing
-    /// file permissions:
+    /// On filesystems that do not support `O_TMPFILE` (e.g. `vfat`), the TempFile is first created
+    /// with default permissions (mode 0o666 & ~umask) that can be readeable by everyone.
+    /// If this is a concern, you must set a more restrictive umask for your program.
+    ///
+    /// # Example
     ///
     /// ```rust
     /// # use std::io;
     /// # use std::io::Write;
     /// # use cap_tempfile::cap_std;
+    /// # use cap_std::fs::PermissionsExt;
     /// # fn main() -> io::Result<()> {
     /// # let somedir = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     /// use cap_std_ext::prelude::*;
     /// let contents = b"hello world\n";
-    /// somedir.atomic_replace_with("somefilename", |f| -> io::Result<_> {
+    /// let perms = cap_std::fs::Permissions::from_mode(0o600);
+    /// somedir.atomic_replace_with("somefilename", Some(perms), |f| -> io::Result<_> {
     ///     f.write_all(contents)?;
-    ///     f.flush()?;
-    ///     use cap_std::fs::PermissionsExt;
-    ///     let perms = cap_std::fs::Permissions::from_mode(0o600);
-    ///     f.get_mut().as_file_mut().set_permissions(perms)?;
     ///     Ok(())
     /// })
     /// # }
@@ -200,6 +203,7 @@ pub trait CapStdExtDirExt {
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
+        perms: Option<cap_std::fs::Permissions>,
         f: F,
     ) -> std::result::Result<T, E>
     where
@@ -318,26 +322,27 @@ pub trait CapStdExtDirExtUtf8 {
     /// require a higher level wrapper which queries the existing file and gathers such metadata
     /// before replacement.
     ///
-    /// # Example, including setting permissions
+    /// # Security
     ///
-    /// The closure may also perform other file operations beyond writing, such as changing
-    /// file permissions:
+    /// On filesystems that do not support `O_TMPFILE` (e.g. `vfat`), the TempFile is first created
+    /// with default permissions (mode 0o666 & ~umask) that can be readeable by everyone.
+    /// If this is a concern, you must set a more restrictive umask for your program.
+    ///
+    /// # Example
     ///
     /// ```rust
     /// # use std::io;
     /// # use std::io::Write;
     /// # use cap_tempfile::cap_std;
+    /// # use cap_std::fs::PermissionsExt;
     /// # fn main() -> io::Result<()> {
     /// # let somedir = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     /// # let somedir = cap_std::fs_utf8::Dir::from_cap_std((&*somedir).try_clone()?);
     /// use cap_std_ext::prelude::*;
     /// let contents = b"hello world\n";
-    /// somedir.atomic_replace_with("somefilename", |f| -> io::Result<_> {
+    /// let perms = cap_std::fs::Permissions::from_mode(0o600);
+    /// somedir.atomic_replace_with("somefilename", Some(perms), |f| -> io::Result<_> {
     ///     f.write_all(contents)?;
-    ///     f.flush()?;
-    ///     use cap_std::fs::PermissionsExt;
-    ///     let perms = cap_std::fs::Permissions::from_mode(0o600);
-    ///     f.get_mut().as_file_mut().set_permissions(perms)?;
     ///     Ok(())
     /// })
     /// # }
@@ -347,6 +352,7 @@ pub trait CapStdExtDirExtUtf8 {
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Utf8Path>,
+        perms: Option<cap_std::fs::Permissions>,
         f: F,
     ) -> std::result::Result<T, E>
     where
@@ -710,6 +716,7 @@ impl CapStdExtDirExt for Dir {
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
+        perms: Option<cap_std::fs::Permissions>,
         f: F,
     ) -> std::result::Result<T, E>
     where
@@ -718,23 +725,47 @@ impl CapStdExtDirExt for Dir {
     {
         let destname = destname.as_ref();
         let (d, name) = subdir_of(self, destname)?;
-        let existing_metadata = d.symlink_metadata_optional(destname)?;
-        // If the target is already a file, then acquire its mode, which we will preserve by default.
-        // We don't follow symlinks here for replacement, and so we definitely don't want to pick up its mode.
-        let existing_perms = existing_metadata
-            .filter(|m| m.is_file())
-            .map(|m| m.permissions());
+
+        // cap_tempfile doesn't support passing permissions on creation.
+        // https://github.com/bytecodealliance/cap-std/pull/390
         let mut t = cap_tempfile::TempFile::new(&d)?;
-        // Apply the permissions, if we have them
-        if let Some(existing_perms) = existing_perms {
-            t.as_file_mut().set_permissions(existing_perms)?;
+        #[cfg(unix)]
+        let t_metadata = t.as_file().metadata()?;
+        #[cfg(unix)]
+        if t_metadata.nlink() > 0 {
+            let zeroperms = cap_std::fs::PermissionsExt::from_mode(0o000);
+            t.as_file().set_permissions(zeroperms)?;
         }
+
         // We always operate in terms of buffered writes
         let mut bufw = std::io::BufWriter::new(t);
         // Call the provided closure to generate the file content
         let r = f(&mut bufw)?;
         // Flush the buffer, get the TempFile
         t = bufw.into_inner().map_err(From::from)?;
+        // Set the file permissions
+        // This must be done after flushing the application buffer else Linux clears the security related bits:
+        // https://github.com/torvalds/linux/blob/94305e83eccb3120c921cd3a015cd74731140bac/fs/inode.c#L2360
+        if let Some(perms) = perms {
+            t.as_file().set_permissions(perms)?;
+        } else {
+            let existing_metadata = d.symlink_metadata_optional(destname)?;
+            // If the target is already a file, then acquire its mode, which we will preserve by default.
+            // We don't follow symlinks here for replacement, and so we definitely don't want to pick up its mode.
+            let existing_perms = existing_metadata
+                .filter(|m| m.is_file())
+                .map(|m| m.permissions());
+            if let Some(existing_perms) = existing_perms {
+                // Apply the existing permissions, if we have them
+                t.as_file().set_permissions(existing_perms)?;
+            } else {
+                // Else restore default permissions
+                #[cfg(unix)]
+                if t_metadata.nlink() > 0 {
+                    t.as_file().set_permissions(t_metadata.permissions())?;
+                }
+            }
+        }
         // fsync the TempFile
         t.as_file().sync_all()?;
         // rename the TempFile
@@ -745,7 +776,7 @@ impl CapStdExtDirExt for Dir {
     }
 
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
-        self.atomic_replace_with(destname, |f| f.write_all(contents.as_ref()))
+        self.atomic_replace_with(destname, None, |f| f.write_all(contents.as_ref()))
     }
 
     fn atomic_write_with_perms(
@@ -754,19 +785,8 @@ impl CapStdExtDirExt for Dir {
         contents: impl AsRef<[u8]>,
         perms: cap_std::fs::Permissions,
     ) -> Result<()> {
-        self.atomic_replace_with(destname, |f| -> io::Result<_> {
-            // If the user is overriding the permissions, let's make the default be
-            // writable by us but not readable by anyone else, in case it has
-            // secret data.
-            #[cfg(unix)]
-            {
-                use cap_std::fs::PermissionsExt;
-                let perms = cap_std::fs::Permissions::from_mode(0o600);
-                f.get_mut().as_file_mut().set_permissions(perms)?;
-            }
+        self.atomic_replace_with(destname, Some(perms), |f| -> io::Result<_> {
             f.write_all(contents.as_ref())?;
-            f.flush()?;
-            f.get_mut().as_file_mut().set_permissions(perms)?;
             Ok(())
         })
     }
