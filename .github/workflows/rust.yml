@@ -117,3 +117,19 @@ jobs:
         run: cargo build --all-targets
       - name: cargo test
         run: cargo test --all-targets
+  tests-windows:
+    name: Tests, Windows
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+      - name: Cache build artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: cargo build
+        run: cargo build --all-targets
+      - name: cargo test
+        run: cargo test --all-targets
