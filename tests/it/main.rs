@@ -1,9 +1,15 @@
 use anyhow::Result;
 
-use cap_std::fs::{Dir, File, Permissions, PermissionsExt};
+#[cfg(unix)]
+use cap_std::fs::PermissionsExt;
+use cap_std::fs::{Dir, File, Permissions};
+use cap_std_ext::cap_std;
+#[cfg(not(windows))]
 use cap_std_ext::cmdext::CapStdExtCommandExt;
 use cap_std_ext::dirext::{CapStdExtDirExt, WalkConfiguration};
-use cap_std_ext::{cap_std, RootDir};
+#[cfg(any(target_os = "android", target_os = "linux"))]
+use cap_std_ext::RootDir;
+#[cfg(unix)]
 use rustix::path::DecInt;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
@@ -13,6 +19,7 @@ use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 
 #[test]
+#[cfg(not(windows))]
 fn take_fd() -> Result<()> {
     let mut c = Command::new("/bin/bash");
     c.arg("-c");
@@ -31,6 +38,7 @@ fn take_fd() -> Result<()> {
 }
 
 #[test]
+#[cfg(not(windows))]
 fn fchdir() -> Result<()> {
     static CONTENTS: &[u8] = b"hello world";
 
@@ -108,20 +116,23 @@ fn ensuredir() -> Result<()> {
     td.write(p, "some file contents")?;
     assert!(td.ensure_dir_with(p, b).is_err());
 
-    // Broken symlinks aren't followed and are errors
-    let p = Path::new("linksrc");
-    td.symlink("linkdest", p)?;
-    assert!(td.metadata(p).is_err());
-    assert!(td
-        .symlink_metadata_optional(p)
-        .unwrap()
-        .unwrap()
-        .is_symlink());
-    // Non-broken symlinks are also an error
-    assert!(td.ensure_dir_with(p, b).is_err());
-    td.create_dir("linkdest")?;
-    assert!(td.ensure_dir_with(p, b).is_err());
-    assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
+    #[cfg(not(windows))]
+    {
+        // Broken symlinks aren't followed and are errors
+        let p = Path::new("linksrc");
+        td.symlink("linkdest", p)?;
+        assert!(td.metadata(p).is_err());
+        assert!(td
+            .symlink_metadata_optional(p)
+            .unwrap()
+            .unwrap()
+            .is_symlink());
+        // Non-broken symlinks are also an error
+        assert!(td.ensure_dir_with(p, b).is_err());
+        td.create_dir("linkdest")?;
+        assert!(td.ensure_dir_with(p, b).is_err());
+        assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
+    }
 
     Ok(())
 }
@@ -142,12 +153,15 @@ fn test_remove_all_optional() -> Result<()> {
     td.write(p, "test")?;
     assert!(td.remove_all_optional(p).unwrap());
 
-    // symlinks; broken and not
-    let p = Path::new("linksrc");
-    td.symlink("linkdest", p)?;
-    assert!(td.remove_all_optional(p).unwrap());
-    td.symlink("linkdest", p)?;
-    assert!(td.remove_all_optional(p).unwrap());
+    #[cfg(not(windows))]
+    {
+        // symlinks; broken and not
+        let p = Path::new("linksrc");
+        td.symlink("linkdest", p)?;
+        assert!(td.remove_all_optional(p).unwrap());
+        td.symlink("linkdest", p)?;
+        assert!(td.remove_all_optional(p).unwrap());
+    }
 
     Ok(())
 }
@@ -198,50 +212,55 @@ fn link_tempfile_with() -> Result<()> {
     );
     assert_eq!(td.metadata(p)?.permissions(), default_perms);
 
-    td.atomic_write_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
-        .unwrap();
-    assert_eq!(
-        td.read_to_string(p).unwrap().as_str(),
-        "atomic replacement 3\n"
-    );
-    assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
+    #[cfg(unix)]
+    {
+        td.atomic_write_with_perms(p, "atomic replacement 3\n", Permissions::from_mode(0o700))
+            .unwrap();
+        assert_eq!(
+            td.read_to_string(p).unwrap().as_str(),
+            "atomic replacement 3\n"
+        );
+        assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
 
-    // Ensure we preserve the executable bit on an existing file
-    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o700, 0o700);
-    td.atomic_write(p, "atomic replacement 4\n").unwrap();
-    assert_eq!(
-        td.read_to_string(p).unwrap().as_str(),
-        "atomic replacement 4\n"
-    );
-    assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
+        // Ensure we preserve the executable bit on an existing file
+        assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o700, 0o700);
+        td.atomic_write(p, "atomic replacement 4\n").unwrap();
+        assert_eq!(
+            td.read_to_string(p).unwrap().as_str(),
+            "atomic replacement 4\n"
+        );
+        assert_eq!(td.metadata(p)?.permissions().mode() & 0o777, 0o700);
 
-    // But we should ignore permissions on a symlink (both existing and broken)
-    td.remove_file(p)?;
-    let p2 = Path::new("bar");
-    td.atomic_write_with_perms(p2, "link target", Permissions::from_mode(0o755))
-        .unwrap();
-    td.symlink(p2, p)?;
-    td.atomic_write(p, "atomic replacement symlink\n").unwrap();
-    assert_eq!(td.metadata(p)?.permissions(), default_perms);
-    // And break the link
-    td.remove_file(p2)?;
-    td.atomic_write(p, "atomic replacement symlink\n").unwrap();
-    assert_eq!(td.metadata(p)?.permissions(), default_perms);
+        // But we should ignore permissions on a symlink (both existing and broken)
+        td.remove_file(p)?;
+        let p2 = Path::new("bar");
+        td.atomic_write_with_perms(p2, "link target", Permissions::from_mode(0o755))
+            .unwrap();
+        td.symlink(p2, p)?;
+        td.atomic_write(p, "atomic replacement symlink\n").unwrap();
+        assert_eq!(td.metadata(p)?.permissions(), default_perms);
+        // And break the link
+        td.remove_file(p2)?;
+        td.atomic_write(p, "atomic replacement symlink\n").unwrap();
+        assert_eq!(td.metadata(p)?.permissions(), default_perms);
 
-    // Also test with mode 0600
-    td.atomic_write_with_perms(p, "self-only file", Permissions::from_mode(0o600))
-        .unwrap();
-    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
-    td.atomic_write(p, "self-only file v2").unwrap();
-    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
-    // But we can override
-    td.atomic_write_with_perms(p, "self-only file v3", Permissions::from_mode(0o640))
-        .unwrap();
-    assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o640);
+        // Also test with mode 0600
+        td.atomic_write_with_perms(p, "self-only file", Permissions::from_mode(0o600))
+            .unwrap();
+        assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+        td.atomic_write(p, "self-only file v2").unwrap();
+        assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o600);
+        // But we can override
+        td.atomic_write_with_perms(p, "self-only file v3", Permissions::from_mode(0o640))
+            .unwrap();
+        assert_eq!(td.metadata(p).unwrap().permissions().mode() & 0o777, 0o640);
+    }
+
     Ok(())
 }
 
 #[test]
+#[cfg(unix)]
 fn test_timestamps() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     let p = Path::new("foo");
@@ -292,20 +311,23 @@ fn ensuredir_utf8() -> Result<()> {
     td.write(p, "some file contents")?;
     assert!(td.ensure_dir_with(p, b).is_err());
 
-    // Broken symlinks aren't followed and are errors
-    let p = Utf8Path::new("linksrc");
-    td.symlink("linkdest", p)?;
-    assert!(td.metadata(p).is_err());
-    assert!(td
-        .symlink_metadata_optional(p)
-        .unwrap()
-        .unwrap()
-        .is_symlink());
-    // Non-broken symlinks are also an error
-    assert!(td.ensure_dir_with(p, b).is_err());
-    td.create_dir("linkdest")?;
-    assert!(td.ensure_dir_with(p, b).is_err());
-    assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
+    #[cfg(not(windows))]
+    {
+        // Broken symlinks aren't followed and are errors
+        let p = Utf8Path::new("linksrc");
+        td.symlink("linkdest", p)?;
+        assert!(td.metadata(p).is_err());
+        assert!(td
+            .symlink_metadata_optional(p)
+            .unwrap()
+            .unwrap()
+            .is_symlink());
+        // Non-broken symlinks are also an error
+        assert!(td.ensure_dir_with(p, b).is_err());
+        td.create_dir("linkdest")?;
+        assert!(td.ensure_dir_with(p, b).is_err());
+        assert!(td.metadata_optional(p).unwrap().unwrap().is_dir());
+    }
 
     Ok(())
 }
@@ -345,6 +367,7 @@ fn filenames_utf8() -> Result<()> {
 }
 
 #[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_rootdir_open() -> Result<()> {
     let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
     let root = RootDir::new(td, ".").unwrap();
@@ -373,6 +396,7 @@ fn test_rootdir_open() -> Result<()> {
 }
 
 #[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_rootdir_entries() -> Result<()> {
     let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
     let root = RootDir::new(td, ".").unwrap();
@@ -389,6 +413,7 @@ fn test_rootdir_entries() -> Result<()> {
 }
 
 #[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_mountpoint() -> Result<()> {
     let root = &Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
     assert_eq!(root.is_mountpoint(".").unwrap(), Some(true));
@@ -413,7 +438,7 @@ fn test_open_noxdev() -> Result<()> {
     // This hard requires the host setup to have /usr/bin on the same filesystem as /
     let usr = Dir::open_ambient_dir("/usr", cap_std::ambient_authority())?;
     assert!(usr.open_dir_noxdev("bin").unwrap().is_some());
-    // Requires a mounted /proc, but that also seems ane.
+    // Requires a mounted /proc, but that also seems sane.
     assert!(root.open_dir_noxdev("proc").unwrap().is_none());
     // Test an error case
     let td = cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
@@ -433,10 +458,13 @@ fn test_walk() -> std::io::Result<()> {
     td.write("usr/bin/true", b"true")?;
     td.write("usr/lib/foo/libfoo.so", b"libfoo")?;
     td.write("usr/lib/libbar.so", b"libbar")?;
-    // Broken link
-    td.symlink("usr/share/timezone", "usr/share/EST")?;
-    // Symlink to self
-    td.symlink(".", "usr/bin/selflink")?;
+    #[cfg(not(windows))]
+    {
+        // Broken link
+        td.symlink("usr/share/timezone", "usr/share/EST")?;
+        // Symlink to self
+        td.symlink(".", "usr/bin/selflink")?;
+    }
     td.write("etc/foo.conf", b"fooconf")?;
     td.write("etc/blah.conf", b"blahconf")?;
 
@@ -466,6 +494,7 @@ fn test_walk() -> std::io::Result<()> {
         })
         .unwrap();
         assert_eq!(n_dirs, 4);
+        #[cfg(not(windows))]
         assert_eq!(n_symlinks, 2);
         assert_eq!(n_regfiles, 4);
     }
@@ -488,6 +517,7 @@ fn test_walk() -> std::io::Result<()> {
 }
 
 #[test]
+#[cfg(unix)]
 fn test_walk_sorted() -> Result<()> {
     let td = cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
 
@@ -536,6 +566,7 @@ fn test_walk_sorted() -> Result<()> {
 }
 
 #[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_walk_noxdev() -> Result<()> {
     let rootfs = Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
 

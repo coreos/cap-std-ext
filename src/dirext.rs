@@ -941,7 +941,10 @@ mod tests {
     #[test]
     fn test_validate_relpath_no_uplinks() {
         let ok_cases = ["foo", "foo/bar", "foo/bar/"];
+        #[cfg(unix)]
         let err_cases = ["/foo", "/", "../foo", "foo/../bar"];
+        #[cfg(windows)]
+        let err_cases = ["C:\\foo", "../foo", "foo/../bar"];
 
         for case in ok_cases {
             assert!(validate_relpath_no_uplinks(Path::new(case)).is_ok());
