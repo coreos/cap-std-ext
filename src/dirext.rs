@@ -12,12 +12,14 @@ use cap_primitives::fs::FileType;
 use cap_std::fs::{Dir, File, Metadata};
 use cap_tempfile::cap_std;
 use cap_tempfile::cap_std::fs::DirEntry;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use rustix::path::Arg;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
 use std::ops::Deref;
+#[cfg(unix)]
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
@@ -447,6 +449,7 @@ fn subdir_of<'d, 'p>(d: &'d Dir, p: &'p Path) -> io::Result<(DirOwnedOrBorrowed<
     Ok((r, name))
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 /// A thin wrapper for [`openat2`] but that retries on interruption.
 fn openat2_with_retry(
     dirfd: impl std::os::fd::AsFd,
@@ -474,6 +477,7 @@ fn openat2_with_retry(
     })
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
     // https://github.com/systemd/systemd/blob/8fbf0a214e2fe474655b17a4b663122943b55db0/src/basic/mountpoint-util.c#L176
     use rustix::fs::StatxAttributes;
@@ -577,6 +581,7 @@ where
         debug_assert!(matches!(flow, std::ops::ControlFlow::Continue(())));
         // Open the child directory, using the noxdev API if
         // we're configured not to cross devices,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let d = {
             if !config.noxdev {
                 entry.open_dir()?
@@ -587,6 +592,10 @@ where
                 continue;
             }
         };
+
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let d = entry.open_dir()?;
+
         // Recurse into the target directory
         walk_inner(&d, path, callback, config)?;
         path.pop();
@@ -784,6 +793,7 @@ impl CapStdExtDirExt for Dir {
         .map_err(Into::into)
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>> {
         is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
     }
