@@ -175,6 +175,7 @@ fn default_mode(d: &Dir) -> Result<Permissions> {
 }
 
 #[test]
+#[cfg(not(windows))]
 fn link_tempfile_with() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
     let p = Path::new("foo");

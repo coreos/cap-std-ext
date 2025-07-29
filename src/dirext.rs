@@ -199,6 +199,7 @@ pub trait CapStdExtDirExt {
     /// ```
     ///
     /// Any existing file will be replaced.
+    #[cfg(not(windows))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -209,9 +210,11 @@ pub trait CapStdExtDirExt {
         E: From<std::io::Error>;
 
     /// Atomically write the provided contents to a file.
+    #[cfg(not(windows))]
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()>;
 
     /// Atomically write the provided contents to a file, using specified permissions.
+    #[cfg(not(windows))]
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
@@ -716,6 +719,7 @@ impl CapStdExtDirExt for Dir {
         Ok(())
     }
 
+    #[cfg(not(windows))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -753,10 +757,12 @@ impl CapStdExtDirExt for Dir {
         Ok(r)
     }
 
+    #[cfg(not(windows))]
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
         self.atomic_replace_with(destname, |f| f.write_all(contents.as_ref()))
     }
 
+    #[cfg(not(windows))]
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
