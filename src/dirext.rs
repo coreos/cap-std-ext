@@ -12,12 +12,14 @@ use cap_primitives::fs::FileType;
 use cap_std::fs::{Dir, File, Metadata};
 use cap_tempfile::cap_std;
 use cap_tempfile::cap_std::fs::DirEntry;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use rustix::path::Arg;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::io::Result;
 use std::io::{self, Write};
 use std::ops::Deref;
+#[cfg(unix)]
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
 
@@ -197,6 +199,7 @@ pub trait CapStdExtDirExt {
     /// ```
     ///
     /// Any existing file will be replaced.
+    #[cfg(not(windows))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -207,9 +210,11 @@ pub trait CapStdExtDirExt {
         E: From<std::io::Error>;
 
     /// Atomically write the provided contents to a file.
+    #[cfg(not(windows))]
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()>;
 
     /// Atomically write the provided contents to a file, using specified permissions.
+    #[cfg(not(windows))]
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
@@ -447,6 +452,7 @@ fn subdir_of<'d, 'p>(d: &'d Dir, p: &'p Path) -> io::Result<(DirOwnedOrBorrowed<
     Ok((r, name))
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 /// A thin wrapper for [`openat2`] but that retries on interruption.
 fn openat2_with_retry(
     dirfd: impl std::os::fd::AsFd,
@@ -474,6 +480,7 @@ fn openat2_with_retry(
     })
 }
 
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn is_mountpoint_impl_statx(root: &Dir, path: &Path) -> Result<Option<bool>> {
     // https://github.com/systemd/systemd/blob/8fbf0a214e2fe474655b17a4b663122943b55db0/src/basic/mountpoint-util.c#L176
     use rustix::fs::StatxAttributes;
@@ -577,6 +584,7 @@ where
         debug_assert!(matches!(flow, std::ops::ControlFlow::Continue(())));
         // Open the child directory, using the noxdev API if
         // we're configured not to cross devices,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let d = {
             if !config.noxdev {
                 entry.open_dir()?
@@ -587,6 +595,10 @@ where
                 continue;
             }
         };
+
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let d = entry.open_dir()?;
+
         // Recurse into the target directory
         walk_inner(&d, path, callback, config)?;
         path.pop();
@@ -707,6 +719,7 @@ impl CapStdExtDirExt for Dir {
         Ok(())
     }
 
+    #[cfg(not(windows))]
     fn atomic_replace_with<F, T, E>(
         &self,
         destname: impl AsRef<Path>,
@@ -744,10 +757,12 @@ impl CapStdExtDirExt for Dir {
         Ok(r)
     }
 
+    #[cfg(not(windows))]
     fn atomic_write(&self, destname: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<()> {
         self.atomic_replace_with(destname, |f| f.write_all(contents.as_ref()))
     }
 
+    #[cfg(not(windows))]
     fn atomic_write_with_perms(
         &self,
         destname: impl AsRef<Path>,
@@ -784,6 +799,7 @@ impl CapStdExtDirExt for Dir {
         .map_err(Into::into)
     }
 
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>> {
         is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
     }
@@ -931,7 +947,10 @@ mod tests {
     #[test]
     fn test_validate_relpath_no_uplinks() {
         let ok_cases = ["foo", "foo/bar", "foo/bar/"];
+        #[cfg(unix)]
         let err_cases = ["/foo", "/", "../foo", "foo/../bar"];
+        #[cfg(windows)]
+        let err_cases = ["C:\\foo", "../foo", "foo/../bar"];
 
         for case in ok_cases {
             assert!(validate_relpath_no_uplinks(Path::new(case)).is_ok());
