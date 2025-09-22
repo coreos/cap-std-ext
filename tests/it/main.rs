@@ -91,6 +91,122 @@ fn optionals() -> Result<()> {
 }
 
 #[test]
+fn read_optional() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+
+    // Test non-existent file returns None
+    assert!(td.read_optional("nonexistent")?.is_none());
+
+    // Test existing file with string contents
+    td.write("test.txt", "hello world")?;
+    let contents = td.read_optional("test.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), b"hello world");
+
+    // Test existing file with binary contents
+    let binary_data = vec![0u8, 1, 2, 254, 255];
+    td.write("test.bin", &binary_data)?;
+    let contents = td.read_optional("test.bin")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), binary_data);
+
+    // Test empty file
+    td.write("empty.txt", "")?;
+    let contents = td.read_optional("empty.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), b"");
+
+    // Test file in subdirectory
+    td.create_dir_all("sub/dir")?;
+    td.write("sub/dir/file.txt", "nested content")?;
+    let contents = td.read_optional("sub/dir/file.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), b"nested content");
+
+    // Test non-existent file in existing directory
+    assert!(td.read_optional("sub/dir/missing.txt")?.is_none());
+
+    // Test large file
+    let large_data = vec![b'x'; 10000];
+    td.write("large.txt", &large_data)?;
+    let contents = td.read_optional("large.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), large_data);
+
+    #[cfg(not(windows))]
+    {
+        // Test symlink to existing file
+        td.symlink("test.txt", "link_to_test")?;
+        let contents = td.read_optional("link_to_test")?;
+        assert!(contents.is_some());
+        assert_eq!(contents.unwrap(), b"hello world");
+
+        // Test broken symlink returns None (NotFound is mapped to None)
+        td.symlink("nonexistent_target", "broken_link")?;
+        assert!(td.read_optional("broken_link")?.is_none());
+    }
+
+    Ok(())
+}
+
+#[test]
+fn read_to_string_optional() -> Result<()> {
+    let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
+
+    // Test non-existent file returns None
+    assert!(td.read_to_string_optional("nonexistent")?.is_none());
+
+    // Test existing file with valid UTF-8 string
+    td.write("test.txt", "hello world")?;
+    let contents = td.read_to_string_optional("test.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), "hello world");
+
+    // Test file with UTF-8 content including unicode
+    let unicode_content = "Hello 世界 🌍";
+    td.write("unicode.txt", unicode_content)?;
+    let contents = td.read_to_string_optional("unicode.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), unicode_content);
+
+    // Test empty file
+    td.write("empty.txt", "")?;
+    let contents = td.read_to_string_optional("empty.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), "");
+
+    // Test file in subdirectory
+    td.create_dir_all("sub/dir")?;
+    td.write("sub/dir/file.txt", "nested content")?;
+    let contents = td.read_to_string_optional("sub/dir/file.txt")?;
+    assert!(contents.is_some());
+    assert_eq!(contents.unwrap(), "nested content");
+
+    // Test non-existent file in existing directory
+    assert!(td.read_to_string_optional("sub/dir/missing.txt")?.is_none());
+
+    // Test file with invalid UTF-8 should return an error
+    let invalid_utf8 = vec![0xff, 0xfe, 0xfd];
+    td.write("invalid.bin", invalid_utf8.as_slice())?;
+    assert!(td.read_to_string_optional("invalid.bin").is_err());
+
+    #[cfg(not(windows))]
+    {
+        // Test symlink to existing file
+        td.symlink("test.txt", "link_to_test")?;
+        let contents = td.read_to_string_optional("link_to_test")?;
+        assert!(contents.is_some());
+        assert_eq!(contents.unwrap(), "hello world");
+
+        // Test broken symlink returns None (NotFound is mapped to None)
+        td.symlink("nonexistent_target", "broken_link")?;
+        assert!(td.read_to_string_optional("broken_link")?.is_none());
+    }
+
+    Ok(())
+}
+
+#[test]
 fn ensuredir() -> Result<()> {
     let td = cap_tempfile::tempdir(cap_std::ambient_authority())?;
 
