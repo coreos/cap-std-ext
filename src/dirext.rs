@@ -16,8 +16,8 @@ use cap_tempfile::cap_std::fs::DirEntry;
 use rustix::path::Arg;
 use std::cmp::Ordering;
 use std::ffi::OsStr;
-use std::io::Result;
 use std::io::{self, Write};
+use std::io::{Read, Result};
 use std::ops::Deref;
 #[cfg(unix)]
 use std::os::fd::OwnedFd;
@@ -149,6 +149,12 @@ pub trait CapStdExtDirExt {
     /// Remove a file or directory but return `Ok(false)` if the file does not exist.
     /// Symbolic links are not followed.
     fn remove_all_optional(&self, path: impl AsRef<Path>) -> Result<bool>;
+
+    /// Read the complete contents of a file, but return `Ok(None)` if the file does not exist.
+    fn read_optional(&self, path: impl AsRef<Path>) -> Result<Option<Vec<u8>>>;
+
+    /// Read the complete contents of a file as a string, but return `Ok(None)` if the file does not exist.
+    fn read_to_string_optional(&self, path: impl AsRef<Path>) -> Result<Option<String>>;
 
     /// Set the access and modification times to the current time.  Symbolic links are not followed.
     #[cfg(unix)]
@@ -691,6 +697,24 @@ impl CapStdExtDirExt for Dir {
             self.remove_file(path)?;
         }
         Ok(true)
+    }
+
+    fn read_optional(&self, path: impl AsRef<Path>) -> Result<Option<Vec<u8>>> {
+        let mut r = Vec::new();
+        let Some(mut f) = self.open_optional(path.as_ref())? else {
+            return Ok(None);
+        };
+        f.read_to_end(&mut r)?;
+        Ok(Some(r))
+    }
+
+    fn read_to_string_optional(&self, path: impl AsRef<Path>) -> Result<Option<String>> {
+        let mut r = String::new();
+        let Some(mut f) = self.open_optional(path.as_ref())? else {
+            return Ok(None);
+        };
+        f.read_to_string(&mut r)?;
+        Ok(Some(r))
     }
 
     #[cfg(unix)]
