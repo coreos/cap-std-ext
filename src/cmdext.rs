@@ -24,6 +24,19 @@ pub trait CapStdExtCommandExt {
 
     /// Use the given directory as the current working directory for the process.
     fn cwd_dir(&mut self, dir: Dir) -> &mut Self;
+
+    /// On Linux, arrange for [`SIGTERM`] to be delivered to the child if the
+    /// parent *thread* exits. This helps avoid leaking child processes if
+    /// the parent crashes for example.
+    ///
+    /// # IMPORTANT
+    ///
+    /// Due to the semantics of <https://man7.org/linux/man-pages/man2/prctl.2.html> this
+    /// will cause the child to exit when the parent *thread* (not process) exits. In
+    /// particular this can become problematic when used with e.g. a threadpool such
+    /// as Tokio's <https://kobzol.github.io/rust/2025/02/23/tokio-plus-prctl-equals-nasty-bug.html>.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn lifecycle_bind_to_parent_thread(&mut self) -> &mut Self;
 }
 
 #[allow(unsafe_code)]
@@ -54,6 +67,20 @@ impl CapStdExtCommandExt for std::process::Command {
             self.pre_exec(move || {
                 rustix::process::fchdir(dir.as_fd())?;
                 Ok(())
+            });
+        }
+        self
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    fn lifecycle_bind_to_parent_thread(&mut self) -> &mut Self {
+        // SAFETY: This API is safe to call in a forked child.
+        unsafe {
+            self.pre_exec(|| {
+                rustix::process::set_parent_process_death_signal(Some(
+                    rustix::process::Signal::TERM,
+                ))
+                .map_err(Into::into)
             });
         }
         self
