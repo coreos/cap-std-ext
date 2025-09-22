@@ -791,3 +791,14 @@ fn test_big_xattr() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn test_lifecycle_bind_to_parent_thread() -> Result<()> {
+    let status = Command::new("true")
+        .lifecycle_bind_to_parent_thread()
+        .status()?;
+    assert!(status.success());
+
+    Ok(())
+}
