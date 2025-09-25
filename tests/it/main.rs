@@ -12,6 +12,7 @@ use cap_std_ext::RootDir;
 #[cfg(unix)]
 use rustix::path::DecInt;
 use std::cmp::Ordering;
+#[cfg(any(target_os = "android", target_os = "linux"))]
 use std::ffi::OsStr;
 use std::io::Write;
 use std::ops::ControlFlow;
@@ -33,7 +34,8 @@ fn take_fd() -> Result<()> {
     c.stdout(std::process::Stdio::piped());
     let s = c.output()?;
     assert!(s.status.success());
-    assert_eq!(s.stdout.as_slice(), b"11\n");
+    let out = String::from_utf8_lossy(&s.stdout);
+    assert_eq!(out.trim(), "11");
     Ok(())
 }
 
@@ -43,7 +45,10 @@ fn fchdir() -> Result<()> {
     static CONTENTS: &[u8] = b"hello world";
 
     fn new_cmd() -> Command {
+        #[cfg(any(target_os = "android", target_os = "linux"))]
         let mut c = Command::new("/usr/bin/cat");
+        #[cfg(not(any(target_os = "android", target_os = "linux")))]
+        let mut c = Command::new("/bin/cat");
         c.arg("somefile");
         c
     }
@@ -718,7 +723,7 @@ fn test_walk_noxdev() -> Result<()> {
 }
 
 #[test]
-#[cfg(not(windows))]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_xattrs() -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
 
@@ -779,7 +784,7 @@ fn test_xattrs() -> Result<()> {
 }
 
 #[test]
-#[cfg(not(windows))]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_big_xattr() -> Result<()> {
     let td = &cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
 

@@ -117,9 +117,12 @@ jobs:
         run: cargo build --all-targets
       - name: cargo test
         run: cargo test --all-targets
-  tests-windows:
-    name: Tests, Windows
-    runs-on: windows-latest
+  build-and-test:
+    name: Build and test on ${{ matrix.host }}
+    runs-on: ${{ matrix.host }}
+    strategy:
+      matrix:
+        host: [windows-latest, macos-latest]
     steps:
       - name: Check out repository
         uses: actions/checkout@v5

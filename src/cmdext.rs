@@ -87,7 +87,7 @@ impl CapStdExtCommandExt for std::process::Command {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(target_os = "android", target_os = "linux")))]
 mod tests {
     use super::*;
     use std::sync::Arc;
@@ -99,8 +99,13 @@ mod tests {
             let tempd = cap_tempfile::TempDir::new(cap_std::ambient_authority())?;
             let tempd_fd = Arc::new(tempd.as_fd().try_clone_to_owned()?);
             let n = tempd_fd.as_raw_fd() + i;
-            let st = std::process::Command::new("ls")
-                .arg(format!("/proc/self/fd/{n}"))
+            #[cfg(any(target_os = "android", target_os = "linux"))]
+            let path = format!("/proc/self/fd/{n}");
+            #[cfg(not(any(target_os = "android", target_os = "linux")))]
+            let path = format!("/dev/fd/{n}");
+            let st = std::process::Command::new("/usr/bin/env")
+                .arg("readlink")
+                .arg(path)
                 .take_fd_n(tempd_fd, n)
                 .status()?;
             assert!(st.success());

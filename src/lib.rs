@@ -22,12 +22,16 @@ pub mod dirext;
 mod rootdir;
 #[cfg(any(target_os = "android", target_os = "linux"))]
 pub use rootdir::*;
-#[cfg(not(windows))]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 mod xattrs;
-#[cfg(not(windows))]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 pub use xattrs::XattrList;
 
 #[cold]
+#[cfg_attr(
+    not(any(target_os = "android", target_os = "linux", test)),
+    allow(dead_code)
+)]
 pub(crate) fn escape_attempt() -> io::Error {
     io::Error::new(
         io::ErrorKind::PermissionDenied,
