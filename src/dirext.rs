@@ -244,16 +244,16 @@ pub trait CapStdExtDirExt {
     /// to determine, and `None` will be returned in those cases.
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>>;
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     /// Get the value of an extended attribute. If the attribute is not present,
     /// this function will return `Ok(None)`.
     fn getxattr(&self, path: impl AsRef<Path>, key: impl AsRef<OsStr>) -> Result<Option<Vec<u8>>>;
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     /// List all extended attribute keys for this path.
     fn listxattrs(&self, path: impl AsRef<Path>) -> Result<crate::XattrList>;
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     /// Set the value of an extended attribute.
     fn setxattr(
         &self,
@@ -614,6 +614,10 @@ where
 
 // Ensure that the target path isn't absolute, and doesn't
 // have any parent references.
+#[cfg_attr(
+    not(any(target_os = "android", target_os = "linux", test)),
+    allow(dead_code)
+)]
 pub(crate) fn validate_relpath_no_uplinks(path: &Path) -> Result<&Path> {
     let is_absolute = path.is_absolute();
     let contains_uplinks = path
@@ -828,17 +832,17 @@ impl CapStdExtDirExt for Dir {
         is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
     }
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn getxattr(&self, path: impl AsRef<Path>, key: impl AsRef<OsStr>) -> Result<Option<Vec<u8>>> {
         crate::xattrs::impl_getxattr(self, path.as_ref(), key.as_ref())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn listxattrs(&self, path: impl AsRef<Path>) -> Result<crate::XattrList> {
         crate::xattrs::impl_listxattrs(self, path.as_ref())
     }
 
-    #[cfg(not(windows))]
+    #[cfg(any(target_os = "android", target_os = "linux"))]
     fn setxattr(
         &self,
         path: impl AsRef<Path>,
