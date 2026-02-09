@@ -425,7 +425,7 @@ enum DirOwnedOrBorrowed<'d> {
     Borrowed(&'d Dir),
 }
 
-impl<'d> Deref for DirOwnedOrBorrowed<'d> {
+impl Deref for DirOwnedOrBorrowed<'_> {
     type Target = Dir;
 
     fn deref(&self) -> &Self::Target {
@@ -662,7 +662,7 @@ impl CapStdExtDirExt for Dir {
                 if !self.symlink_metadata(p)?.is_dir() {
                     // TODO use https://doc.rust-lang.org/std/io/enum.ErrorKind.html#variant.NotADirectory
                     // once it's stable.
-                    return Err(io::Error::new(io::ErrorKind::Other, "Found non-directory"));
+                    return Err(io::Error::other("Found non-directory"));
                 }
                 Ok(false)
             }
@@ -829,7 +829,7 @@ impl CapStdExtDirExt for Dir {
 
     #[cfg(any(target_os = "android", target_os = "linux"))]
     fn is_mountpoint(&self, path: impl AsRef<Path>) -> Result<Option<bool>> {
-        is_mountpoint_impl_statx(self, path.as_ref()).map_err(Into::into)
+        is_mountpoint_impl_statx(self, path.as_ref())
     }
 
     #[cfg(any(target_os = "android", target_os = "linux"))]

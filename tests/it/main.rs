@@ -316,7 +316,7 @@ fn link_tempfile_with() -> Result<()> {
     let e = td
         .atomic_replace_with(p, |f| {
             writeln!(f, "should not be written")?;
-            Err::<(), _>(std::io::Error::new(std::io::ErrorKind::Other, "oops"))
+            Err::<(), _>(std::io::Error::other("oops"))
         })
         .err()
         .unwrap();
@@ -625,7 +625,7 @@ fn test_walk() -> std::io::Result<()> {
     {
         let r: std::io::Result<_> = td.walk(&WalkConfiguration::default(), |e| {
             if e.path.strip_prefix("usr/share").is_ok() {
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, "oops"));
+                return Err(std::io::Error::other("oops"));
             }
             Ok(ControlFlow::Continue(()))
         });
