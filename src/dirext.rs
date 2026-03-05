@@ -59,6 +59,9 @@ pub struct WalkConfiguration<'p> {
     /// Do not cross devices.
     noxdev: bool,
 
+    /// Skip mount points entirely (do not visit or traverse them).
+    skip_mountpoints: bool,
+
     path_base: Option<&'p Path>,
 
     // It's not *that* complex of a type, come on clippy...
@@ -73,15 +76,36 @@ impl std::fmt::Debug for WalkConfiguration<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("WalkConfiguration")
             .field("noxdev", &self.noxdev)
+            .field("skip_mountpoints", &self.skip_mountpoints)
             .field("sorter", &self.sorter.as_ref().map(|_| true))
             .finish()
     }
 }
 
 impl<'p> WalkConfiguration<'p> {
-    /// Enable configuration to not traverse mount points
+    /// Enable configuration to not traverse mount points.
+    ///
+    /// Note that the mount point directory itself will still be visited
+    /// (passed to the callback); only traversal into it is prevented.
+    /// To skip mount point directories entirely, use [`skip_mountpoints`](Self::skip_mountpoints).
     pub fn noxdev(mut self) -> Self {
         self.noxdev = true;
+        self
+    }
+
+    /// Skip mount point directories entirely during the walk.
+    ///
+    /// When enabled, directories that are mount points will not be visited
+    /// (the callback will not be invoked for them) and will not be traversed.
+    ///
+    /// This is independent from [`noxdev`](Self::noxdev) -- `skip_mountpoints`
+    /// controls whether mount point directories are visited at all, while
+    /// `noxdev` controls whether the walk traverses into directories on
+    /// different devices. In practice you may want to use both together.
+    ///
+    /// This option currently only has an effect on Linux.
+    pub fn skip_mountpoints(mut self) -> Self {
+        self.skip_mountpoints = true;
         self
     }
 
@@ -556,6 +580,14 @@ where
         let ty = entry.file_type()?;
         let is_dir = ty.is_dir();
         let name = entry.file_name();
+        // If skip_mountpoints is enabled and this is a directory,
+        // check if it's a mount point and skip it entirely.
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        if is_dir && config.skip_mountpoints {
+            if let Some(true) = is_mountpoint_impl_statx(d, Path::new(&name))? {
+                continue;
+            }
+        }
         // The path provided to the user includes the current filename
         path.push(&name);
         let filename = &name;
