@@ -724,6 +724,59 @@ fn test_walk_noxdev() -> Result<()> {
 
 #[test]
 #[cfg(any(target_os = "android", target_os = "linux"))]
+fn test_walk_skip_mountpoints() -> Result<()> {
+    let rootfs = Dir::open_ambient_dir("/", cap_std::ambient_authority())?;
+
+    // Count root entries that are mountpoints
+    let n_root_entries = std::fs::read_dir("/")?.count();
+    let mut n_mountpoints = 0;
+    for entry in std::fs::read_dir("/")? {
+        let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            if let Some(true) = rootfs.is_mountpoint(entry.file_name())? {
+                n_mountpoints += 1;
+            }
+        }
+    }
+    assert!(
+        n_mountpoints > 0,
+        "expected at least one mountpoint under /"
+    );
+
+    // Walk with skip_mountpoints; don't traverse into any directories.
+    let mut visited = 0;
+    rootfs
+        .walk(
+            &WalkConfiguration::default().skip_mountpoints(),
+            |e| -> std::io::Result<_> {
+                // Verify this entry is not a mountpoint
+                if e.file_type.is_dir() {
+                    let is_mp = e.dir.is_mountpoint(e.filename)?;
+                    assert_ne!(
+                        is_mp,
+                        Some(true),
+                        "mountpoint {:?} should have been skipped",
+                        e.path
+                    );
+                }
+                visited += 1;
+                // Don't traverse into subdirectories, but continue iterating siblings
+                if e.file_type.is_dir() {
+                    Ok(ControlFlow::Break(()))
+                } else {
+                    Ok(ControlFlow::Continue(()))
+                }
+            },
+        )
+        .unwrap();
+    // We should see all root entries minus the mountpoints
+    assert_eq!(visited, n_root_entries - n_mountpoints);
+
+    Ok(())
+}
+
+#[test]
+#[cfg(any(target_os = "android", target_os = "linux"))]
 fn test_xattrs() -> Result<()> {
     use std::os::unix::ffi::OsStrExt;
 
