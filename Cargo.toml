@@ -20,6 +20,7 @@ libc = "0.2"
 
 [dev-dependencies]
 anyhow = "1.0"
+proptest = "1.11.0"
 rand = "0.10"
 uuid = "1.10"
 
