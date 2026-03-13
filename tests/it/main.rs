@@ -5,7 +5,7 @@ use cap_std::fs::PermissionsExt;
 use cap_std::fs::{Dir, File, Permissions};
 use cap_std_ext::cap_std;
 #[cfg(not(windows))]
-use cap_std_ext::cmdext::CapStdExtCommandExt;
+use cap_std_ext::cmdext::{CapStdExtCommandExt, CmdFds, SystemdFdName};
 use cap_std_ext::dirext::{CapStdExtDirExt, WalkConfiguration};
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use cap_std_ext::RootDir;
@@ -21,6 +21,7 @@ use std::{process::Command, sync::Arc};
 
 #[test]
 #[cfg(not(windows))]
+#[allow(deprecated)]
 fn take_fd() -> Result<()> {
     let mut c = Command::new("/bin/bash");
     c.arg("-c");
@@ -859,4 +860,147 @@ fn test_lifecycle_bind_to_parent_thread() -> Result<()> {
     assert!(status.success());
 
     Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_pass_systemd_fds() -> Result<()> {
+    // Verify the child sees the correct LISTEN_* env vars and can read from the fd.
+    let (r, w) = rustix::pipe::pipe()?;
+    let r = Arc::new(r);
+    let mut w: cap_std::fs::File = w.into();
+    write!(w, "sd-activate-test")?;
+    drop(w);
+
+    // The child: verify LISTEN_PID matches $$, print the other vars, read fd 3.
+    let script = r#"
+test "$LISTEN_PID" = "$$" || { echo "LISTEN_PID=$LISTEN_PID but $$=$$" >&2; exit 1; }
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+"#;
+    let mut c = Command::new("/bin/bash");
+    c.arg("-c").arg(script);
+    c.stdout(std::process::Stdio::piped());
+    let fds = CmdFds::new_systemd_fds([(r, SystemdFdName::new("myproto"))]);
+    c.take_fds(fds);
+    let out = c.output()?;
+    assert!(
+        out.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 3, "unexpected output: {stdout}");
+    assert_eq!(lines[0], "1");
+    assert_eq!(lines[1], "myproto");
+    assert_eq!(lines[2], "sd-activate-test");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_systemd_fds_then_take_fd() -> Result<()> {
+    // Systemd fds at 3 and 4, then auto-assigned take_fd gets 5.
+    let (r1, w1) = rustix::pipe::pipe()?;
+    let (r2, w2) = rustix::pipe::pipe()?;
+    let (r_extra, w_extra) = rustix::pipe::pipe()?;
+    let r1 = Arc::new(r1);
+    let r2 = Arc::new(r2);
+    let r_extra = Arc::new(r_extra);
+    let mut w1: cap_std::fs::File = w1.into();
+    let mut w2: cap_std::fs::File = w2.into();
+    let mut w_extra: cap_std::fs::File = w_extra.into();
+    write!(w1, "first")?;
+    write!(w2, "second")?;
+    write!(w_extra, "extra")?;
+    drop(w1);
+    drop(w2);
+    drop(w_extra);
+
+    let script = r#"
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+printf '\n'
+cat <&4
+printf '\n'
+cat <&5
+"#;
+    let mut c = Command::new("/bin/bash");
+    c.arg("-c").arg(script);
+    c.stdout(std::process::Stdio::piped());
+    let mut fds = CmdFds::new_systemd_fds([
+        (r1, SystemdFdName::new("alpha")),
+        (r2, SystemdFdName::new("beta")),
+    ]);
+    let extra_n = fds.take_fd(r_extra);
+    assert_eq!(extra_n, 5);
+    c.take_fds(fds);
+    let out = c.output()?;
+    assert!(out.status.success(), "child failed: {:?}", out);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 5, "unexpected output: {stdout}");
+    assert_eq!(lines[0], "2");
+    assert_eq!(lines[1], "alpha:beta");
+    assert_eq!(lines[2], "first");
+    assert_eq!(lines[3], "second");
+    assert_eq!(lines[4], "extra");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_cmd_fds_take_fd_n_then_systemd() -> Result<()> {
+    // Reserve fd 10 explicitly, then systemd fds at 3 — no conflict.
+    let (r_explicit, w_explicit) = rustix::pipe::pipe()?;
+    let (r_sd, w_sd) = rustix::pipe::pipe()?;
+    let r_explicit = Arc::new(r_explicit);
+    let r_sd = Arc::new(r_sd);
+    let mut w_explicit: cap_std::fs::File = w_explicit.into();
+    let mut w_sd: cap_std::fs::File = w_sd.into();
+    write!(w_explicit, "explicit")?;
+    write!(w_sd, "systemd")?;
+    drop(w_explicit);
+    drop(w_sd);
+
+    let script = r#"
+cat <&10
+printf '\n'
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+"#;
+    let mut c = Command::new("/bin/bash");
+    c.arg("-c").arg(script);
+    c.stdout(std::process::Stdio::piped());
+    let mut fds = CmdFds::new_systemd_fds([(r_sd, SystemdFdName::new("varlink"))]);
+    fds.take_fd_n(r_explicit, 10);
+    c.take_fds(fds);
+    let out = c.output()?;
+    assert!(out.status.success(), "child failed: {:?}", out);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 4, "unexpected output: {stdout}");
+    assert_eq!(lines[0], "explicit");
+    assert_eq!(lines[1], "1");
+    assert_eq!(lines[2], "varlink");
+    assert_eq!(lines[3], "systemd");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+#[should_panic(expected = "fd 3 is already assigned")]
+fn test_cmd_fds_overlap_panics() {
+    let (r1, _w1) = rustix::pipe::pipe().unwrap();
+    let (r2, _w2) = rustix::pipe::pipe().unwrap();
+    let r1 = Arc::new(r1);
+    let r2 = Arc::new(r2);
+
+    let mut fds = CmdFds::new_systemd_fds([(r1, SystemdFdName::new("x"))]);
+    // This should panic: fd 3 is already taken by systemd.
+    fds.take_fd_n(r2, 3);
 }
