@@ -42,7 +42,7 @@ pub(crate) fn escape_attempt() -> io::Error {
 /// Prelude, intended for glob import.
 pub mod prelude {
     #[cfg(not(windows))]
-    pub use super::cmdext::CapStdExtCommandExt;
+    pub use super::cmdext::{CapStdExtCommandExt, CmdFds, SystemdFdName};
     pub use super::dirext::CapStdExtDirExt;
     #[cfg(feature = "fs_utf8")]
     pub use super::dirext::CapStdExtDirExtUtf8;

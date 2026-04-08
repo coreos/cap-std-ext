@@ -5,7 +5,7 @@ use cap_std::fs::PermissionsExt;
 use cap_std::fs::{Dir, File, Permissions};
 use cap_std_ext::cap_std;
 #[cfg(not(windows))]
-use cap_std_ext::cmdext::CapStdExtCommandExt;
+use cap_std_ext::cmdext::{CapStdExtCommandExt, CmdFds, SystemdFdName};
 use cap_std_ext::dirext::{CapStdExtDirExt, WalkConfiguration};
 #[cfg(any(target_os = "android", target_os = "linux"))]
 use cap_std_ext::RootDir;
@@ -16,26 +16,52 @@ use std::cmp::Ordering;
 use std::ffi::OsStr;
 use std::io::Write;
 use std::ops::ControlFlow;
+#[cfg(not(windows))]
+use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::{process::Command, sync::Arc};
 
-#[test]
+/// Create a pipe, write `content` to it, and return the read end wrapped in `Arc`.
 #[cfg(not(windows))]
-fn take_fd() -> Result<()> {
-    let mut c = Command::new("/bin/bash");
-    c.arg("-c");
-    c.arg("wc -c <&5");
+fn make_pipe(content: &str) -> Result<Arc<rustix::fd::OwnedFd>> {
     let (r, w) = rustix::pipe::pipe()?;
     let r = Arc::new(r);
     let mut w: File = w.into();
-    c.take_fd_n(r, 5);
-    write!(w, "hello world")?;
+    write!(w, "{content}")?;
     drop(w);
+    Ok(r)
+}
+
+/// Run a bash script, return its stdout split into lines.
+///
+/// `setup` is called on the [`Command`] before spawning, so callers can
+/// attach fds or configure the child.
+#[cfg(not(windows))]
+fn run_bash_piped(script: &str, setup: impl FnOnce(&mut Command)) -> Result<Vec<String>> {
+    let mut c = Command::new("/bin/bash");
+    c.arg("-c").arg(script);
     c.stdout(std::process::Stdio::piped());
-    let s = c.output()?;
-    assert!(s.status.success());
-    let out = String::from_utf8_lossy(&s.stdout);
-    assert_eq!(out.trim(), "11");
+    setup(&mut c);
+    let out = c.output()?;
+    assert!(
+        out.status.success(),
+        "child failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    Ok(stdout.lines().map(String::from).collect())
+}
+
+#[test]
+#[cfg(not(windows))]
+#[allow(deprecated)]
+fn take_fd() -> Result<()> {
+    let r = make_pipe("hello world")?;
+    let lines = run_bash_piped("wc -c <&5", |c| {
+        c.take_fd_n(r, 5);
+    })?;
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].trim(), "11");
     Ok(())
 }
 
@@ -859,4 +885,190 @@ fn test_lifecycle_bind_to_parent_thread() -> Result<()> {
     assert!(status.success());
 
     Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_pass_systemd_fds() -> Result<()> {
+    let r = make_pipe("sd-activate-test")?;
+
+    // The child: verify LISTEN_PID matches $$, print the other vars, read fd 3.
+    let script = r#"
+test "$LISTEN_PID" = "$$" || { echo "LISTEN_PID=$LISTEN_PID but $$=$$" >&2; exit 1; }
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+"#;
+    let fds = CmdFds::new_systemd_fds([(r, SystemdFdName::new("myproto"))]);
+    let lines = run_bash_piped(script, |c| {
+        c.take_fds(fds);
+    })?;
+    assert_eq!(lines.len(), 3, "unexpected output: {lines:?}");
+    assert_eq!(lines[0], "1");
+    assert_eq!(lines[1], "myproto");
+    assert_eq!(lines[2], "sd-activate-test");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_systemd_fds_then_take_fd() -> Result<()> {
+    // Systemd fds at 3 and 4, then auto-assigned take_fd gets 5.
+    let r1 = make_pipe("first")?;
+    let r2 = make_pipe("second")?;
+    let r_extra = make_pipe("extra")?;
+
+    let script = r#"
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+printf '\n'
+cat <&4
+printf '\n'
+cat <&5
+"#;
+    let mut fds = CmdFds::new_systemd_fds([
+        (r1, SystemdFdName::new("alpha")),
+        (r2, SystemdFdName::new("beta")),
+    ]);
+    let extra_n = fds.take_fd(r_extra);
+    assert_eq!(extra_n, 5);
+    let lines = run_bash_piped(script, |c| {
+        c.take_fds(fds);
+    })?;
+    assert_eq!(lines.len(), 5, "unexpected output: {lines:?}");
+    assert_eq!(lines[0], "2");
+    assert_eq!(lines[1], "alpha:beta");
+    assert_eq!(lines[2], "first");
+    assert_eq!(lines[3], "second");
+    assert_eq!(lines[4], "extra");
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(windows))]
+fn test_cmd_fds_take_fd_n_then_systemd() -> Result<()> {
+    // Reserve fd 10 explicitly, then systemd fds at 3 — no conflict.
+    let r_explicit = make_pipe("explicit")?;
+    let r_sd = make_pipe("systemd")?;
+
+    let script = r#"
+cat <&10
+printf '\n'
+printf '%s\n' "$LISTEN_FDS" "$LISTEN_FDNAMES"
+cat <&3
+"#;
+    let mut fds = CmdFds::new_systemd_fds([(r_sd, SystemdFdName::new("varlink"))]);
+    fds.take_fd_n(r_explicit, 10);
+    let lines = run_bash_piped(script, |c| {
+        c.take_fds(fds);
+    })?;
+    assert_eq!(lines.len(), 4, "unexpected output: {lines:?}");
+    assert_eq!(lines[0], "explicit");
+    assert_eq!(lines[1], "1");
+    assert_eq!(lines[2], "varlink");
+    assert_eq!(lines[3], "systemd");
+
+    Ok(())
+}
+
+/// Try to dup `fd` so its raw fd number equals `raw`.
+/// Returns `Ok(Some(dup))` on success, `Ok(None)` if the slot is occupied.
+/// Uses F_DUPFD starting at `raw`; if the kernel returns a higher number,
+/// we close it and give up rather than fighting for the slot.
+#[cfg(not(windows))]
+fn try_fd_at_raw(fd: &rustix::fd::OwnedFd, raw: i32) -> Result<Option<rustix::fd::OwnedFd>> {
+    let dup = rustix::io::fcntl_dupfd_cloexec(fd, raw)?;
+    if dup.as_raw_fd() == raw {
+        Ok(Some(dup))
+    } else {
+        // Slot was occupied; drop the dup (closes it) and signal failure.
+        Ok(None)
+    }
+}
+
+#[cfg(not(windows))]
+mod proptest_fd {
+    use super::*;
+    use cap_std_ext::cmdext::{CapStdExtCommandExt, CmdFds};
+    use proptest::prelude::*;
+
+    /// Generate a Vec of distinct target fd numbers in [3, 15].
+    fn fd_targets(max_count: usize) -> impl Strategy<Value = Vec<i32>> {
+        proptest::collection::btree_set(3..=15i32, 1..=max_count)
+            .prop_map(|s| s.into_iter().collect::<Vec<_>>())
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(80))]
+
+        /// For each generated set of target fds, create pipes with unique
+        /// content, force some source fds into positions that collide with
+        /// other targets (the worst case), then verify every target gets
+        /// the right content through the child process.
+        #[test]
+        fn fd_shuffle_no_clobber(targets in fd_targets(5)) {
+            // Build pipes with content "fdN" for each target N.
+            let mut entries: Vec<(i32, Arc<rustix::fd::OwnedFd>)> = Vec::new();
+
+            for (i, &tgt) in targets.iter().enumerate() {
+                let pipe_r = make_pipe(&format!("fd{tgt}")).unwrap();
+
+                // For odd-indexed entries, try to force the source fd's raw
+                // number to equal the *next* entry's target (wrapping around).
+                // This manufactures exactly the collision that broke CI.
+                if i % 2 == 1 {
+                    let collide_with = targets[(i + 1) % targets.len()];
+                    if let Ok(Some(moved)) = try_fd_at_raw(&pipe_r, collide_with) {
+                        entries.push((tgt, Arc::new(moved)));
+                        continue;
+                    }
+                }
+                entries.push((tgt, pipe_r));
+            }
+
+            // Build a bash script that reads from each target fd and prints
+            // "targetN:content".
+            let mut script = String::new();
+            for &tgt in &targets {
+                script.push_str(&format!(
+                    "printf '{tgt}:'; cat <&{tgt}; printf '\\n'\n"
+                ));
+            }
+
+            let mut fds = CmdFds::new();
+            for (tgt, fd) in entries {
+                fds.take_fd_n(fd, tgt);
+            }
+            let lines = run_bash_piped(&script, |c| { c.take_fds(fds); }).unwrap();
+
+            // Verify each line is "N:fdN".
+            let n_targets = targets.len();
+            prop_assert_eq!(
+                lines.len(), n_targets,
+                "expected {} lines, got {}: {:?}", n_targets, lines.len(), lines
+            );
+            for (line, &tgt) in lines.iter().zip(targets.iter()) {
+                let expected = format!("{tgt}:fd{tgt}");
+                prop_assert_eq!(
+                    line, &expected,
+                    "wrong content for target fd {}", tgt
+                );
+            }
+        }
+    }
+}
+
+#[test]
+#[cfg(not(windows))]
+#[should_panic(expected = "fd 3 is already assigned")]
+fn test_cmd_fds_overlap_panics() {
+    let (r1, _w1) = rustix::pipe::pipe().unwrap();
+    let (r2, _w2) = rustix::pipe::pipe().unwrap();
+    let r1 = Arc::new(r1);
+    let r2 = Arc::new(r2);
+
+    let mut fds = CmdFds::new_systemd_fds([(r1, SystemdFdName::new("x"))]);
+    // This should panic: fd 3 is already taken by systemd.
+    fds.take_fd_n(r2, 3);
 }
